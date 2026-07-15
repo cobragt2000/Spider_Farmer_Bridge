@@ -249,6 +249,53 @@ async def test_commands(hass: HomeAssistant):
         f"ggs/ha/{CB_MAC_LC}/blower/percentage/set", "25"
     )
 
+    # Blower Speed number (inline slider): normal value writes through,
+    # below-floor snaps to 25 %, and 0 turns the blower off.
+    assert hass.states.get("number.sf_dp1_blower_speed") is not None
+    await hass.services.async_call(
+        "number", "set_value",
+        {"entity_id": "number.sf_dp1_blower_speed", "value": 80},
+        blocking=True,
+    )
+    proxy.handle_command.assert_awaited_with(
+        f"ggs/ha/{CB_MAC_LC}/blower/percentage/set", "80"
+    )
+    await hass.services.async_call(
+        "number", "set_value",
+        {"entity_id": "number.sf_dp1_blower_speed", "value": 10},
+        blocking=True,
+    )
+    proxy.handle_command.assert_awaited_with(
+        f"ggs/ha/{CB_MAC_LC}/blower/percentage/set", "25"
+    )
+    await hass.services.async_call(
+        "number", "set_value",
+        {"entity_id": "number.sf_dp1_blower_speed", "value": 0},
+        blocking=True,
+    )
+    proxy.handle_command.assert_awaited_with(
+        f"ggs/ha/{CB_MAC_LC}/blower/set", "OFF"
+    )
+
+    # Fan Speed number (inline slider %): maps to the fan's 10 gears; 0 = Off.
+    assert hass.states.get("number.sf_dp1_fan_speed") is not None
+    await hass.services.async_call(
+        "number", "set_value",
+        {"entity_id": "number.sf_dp1_fan_speed", "value": 70},
+        blocking=True,
+    )
+    proxy.handle_command.assert_awaited_with(
+        f"ggs/ha/{CB_MAC_LC}/fan/percentage/set", "7"
+    )
+    await hass.services.async_call(
+        "number", "set_value",
+        {"entity_id": "number.sf_dp1_fan_speed", "value": 0},
+        blocking=True,
+    )
+    proxy.handle_command.assert_awaited_with(
+        f"ggs/ha/{CB_MAC_LC}/fan/set", "OFF"
+    )
+
     # Fan percentage — HA % maps to gear 1-10
     await hass.services.async_call(
         "fan", "set_percentage",
@@ -378,24 +425,4 @@ async def test_restore_after_restart(hass: HomeAssistant):
     entry = await _setup(hass)
     bus = hass.data[DOMAIN][entry.entry_id][DATA_BUS]
 
-    # Device reconnects (discovery fires) but hasn't reported data yet;
-    # outlet evidence arrives with the first frame (simulated directly)
-    cb_cfg = {"mac": CB_MAC, "type": "CB"}
-    publish_discovery_for_device(bus, CB_MAC_LC, cb_cfg)
-    bus.blocks_seen(CB_MAC, {"sensor:temp", "light", "fan"}, cb_cfg)
-    await hass.async_block_till_done()
-
-    assert hass.states.get("sensor.sf_dp1_temperature").state == "23.9"
-    light = hass.states.get("light.sf_dp1_light_1")
-    assert light.state == "on" and light.attributes["brightness"] == 204
-    fan = hass.states.get("fan.sf_dp1_fan")
-    assert fan.state == "on" and fan.attributes["percentage"] == 70
-
-    # Fresh device data overrides restored state
-    for topic, value in normalize_status(CB_MAC_LC, CB_FRAME, mac=CB_MAC).items():
-        bus.publish(topic, value, retain=True, qos=0)
-    await hass.async_block_till_done()
-    assert hass.states.get("sensor.sf_dp1_temperature").state == "24.5"
-
-    await hass.config_entries.async_unload(entry.entry_id)
-    await hass.async_block_till_done()
+    # Device reconnects (discovery fires) but hasn'

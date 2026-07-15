@@ -34,7 +34,12 @@ async def async_setup_entry(
 
     @callback
     def _add(defs: list[SfDef]) -> None:
-        async_add_entities(SfLevelNumber(bus, d) for d in defs)
+        async_add_entities(
+            SfBlowerSpeedNumber(bus, d) if d.kind == "blower"
+            else SfFanSpeedNumber(bus, d) if d.kind == "fan"
+            else SfLevelNumber(bus, d)
+            for d in defs
+        )
 
     entry.async_on_unload(
         async_dispatcher_connect(hass, SIGNAL_NEW_FMT.format(PLATFORM), _add)
@@ -90,3 +95,45 @@ class SfLevelNumber(SfEntity, NumberEntity):
         # Level-style entities set command_subfield explicitly ("level",
         # "oscillation_level", ...); env/outlet numbers write the bare field.
         await self._command(str(int(value)), subfield=self.d.command_subfield)
+
+
+class SfBlowerSpeedNumber(SfLevelNumber):
+    """Blower speed slider: 0 = Off, otherwise 25-100 % (hardware airflow
+    floor). Setting 0 turns the blower off via the block's on/off write;
+    any value 1-24 snaps up to the 25 % floor. Mirrors blower_speed, which
+    reports 0 while the blower is off."""
+
+    _FLOOR_PCT = 25
+
+    async def async_set_native_value(self, value: float) -> None:
+        pct = int(value)
+        if pct <= 0:
+            # subfield=None -> blower block on/off write ("OFF")
+            await self._command("OFF")
+            return
+        pct = max(self._FLOOR_PCT, min(100, pct))
+        await self._command(str(pct), subfield=self.d.command_subfield)
+
+
+class SfFanSpeedNumber(SfLevelNumber):
+    """Circulation-fan speed slider in %, mapped to the fan's 10 gears.
+    The slider is 0-100 in steps of 10; 0 = Off. Reads the reported gear
+    (fan_gear, 0-10, which is 0 while the fan is off) and shows it as a
+    percentage; writes convert the percentage back to a 1-10 gear. The fan
+    entity's own speed control is unchanged."""
+
+    @callback
+    def _handle_payload(self, topic: str, payload: str) -> None:
+        try:
+            gear = float(payload)
+        except (ValueError, TypeError):
+            return
+        self._attr_native_value = max(0.0, min(100.0, gear * 10))
+
+    async def async_set_native_value(self, value: float) -> None:
+        pct = int(value)
+        if pct <= 0:
+            await self._command("OFF")
+            return
+        gear = max(1, min(10, round(pct / 10)))
+        await self._command(str(gear), subfield=self.d.command_subfield)

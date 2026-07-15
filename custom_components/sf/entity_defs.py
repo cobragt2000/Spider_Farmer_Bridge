@@ -251,6 +251,14 @@ def build_device_entities(
             d("fan", "blower", "Blower", icon="mdi:fan", kind="blower"),
             d("sensor", "blower_speed", "Blower Speed",
               unit="%", state_class="measurement", icon="mdi:speedometer"),
+            # Inline speed slider (0 = Off, else 25-100 % hardware floor).
+            # Mirrors the blower_speed report; command routes to the blower
+            # block's percentage subfield. kind="blower" selects the
+            # off/floor-aware number entity in number.py.
+            d("number", "blower_speed_set", "Blower Speed",
+              unit="%", icon="mdi:speedometer", kind="blower",
+              command_field="blower", command_subfield="percentage",
+              min_value=0, max_value=100, step=5),
             d("sensor", "blower_mode", "Blower Mode",
               device_class="enum", options=list(_FAN_MODE_OPTIONS), icon="mdi:cog"),
         ]
@@ -260,6 +268,13 @@ def build_device_entities(
             # unique_id stays *_fan_gear; display name is "Fan Speed"
             d("sensor", "fan_gear", "Fan Speed",
               state_class="measurement", icon="mdi:speedometer"),
+            # Inline speed slider in % (0 = Off, 10-100 in 10s) mapped to the
+            # fan's 10 gears. kind="fan" selects the gear<->percent number in
+            # number.py; reads fan_gear (0-10) and shows it as a percentage.
+            d("number", "fan_gear_set", "Fan Speed",
+              unit="%", icon="mdi:speedometer", kind="fan",
+              command_field="fan", command_subfield="percentage",
+              min_value=0, max_value=100, step=10),
             d("sensor", "fan_oscillation", "Fan Oscillation",
               state_class="measurement", icon="mdi:rotate-3d-variant"),
             d("binary_sensor", "fan_natural_wind", "Fan Natural Wind",
