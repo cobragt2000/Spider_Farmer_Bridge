@@ -3,6 +3,21 @@
 All notable changes to the Spider Farmer Bridge integration.
 Each section below is ready to paste into the matching GitHub release.
 
+## 3.16.3
+
+### Dashboard card (bundled card v0.2.0)
+- **Visual editor with device dropdowns.** `custom:spider-farmer-card` now ships a
+  working config UI. Previously the card advertised an editor that was never defined,
+  so opening it errored with "Visual editor not supported … Cannot read properties of
+  undefined (reading 'bind')". The editor lists your Spider Farmer devices in a **Panel
+  device** dropdown (each shown with its friendly name), a **title** field, a
+  **default tab** selector, and checkboxes to pick which power strips / panels expose
+  their outlet controls on the Config tab — no more hand-typing slot names.
+- **Device name in the header.** The card header now shows the selected panel's device
+  name next to the title (e.g. "Spider Farmer · SF Display Panel 4E01"), so it's obvious
+  which physical device a card is bound to — this makes a wrong `panel:` slot (e.g. dp1
+  vs dp2) immediately visible.
+
 ## 3.16.2
 
 ### Fixes
@@ -293,20 +308,4 @@ Consolidates the 3.11.2 beta series into a stable release.
 
 ## 3.3.0
 - Soil probes become slot citizens: `sensor.sf_soil1_temperature` / `_moisture` / `_ec` (serials leave the entity IDs; unique IDs stay serial-based so history survives)
-- Probes listed and editable in the Device mappings screen
-- Probe replacement in one submit: give the new serial the dead probe's slot, blank the old serial (blank = retire: removes its entities and mapping)
-
-## 3.2.6
-- Clean removal no longer strands an empty `config/sf/` folder
-- The customization snapshot is skipped entirely when "Preserve on removal" is unchecked
-
-## 3.2.5
-- **Fixed silent data loss**: saving the Settings form replaced the entry's options wholesale, wiping `device_slots` (slots would have reassigned by connect order on the next restart)
-- Settings now merges into existing options; slot lookups self-heal a wiped stored mapping from the runtime cache
-
-## 3.2.4
-- Deleting a connected device now works as a **reset**: its session is severed, entities wiped, and it re-registers fresh on reconnect (power a device off first for permanent removal)
-- Rolls up 3.2.3 (skip that version)
-
-## 3.2.3
-- **Field-level air sensor evidence**: temperatur
+- Probes listed and editable in
