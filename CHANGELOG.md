@@ -3,6 +3,23 @@
 All notable changes to the Spider Farmer Bridge integration.
 Each section below is ready to paste into the matching GitHub release.
 
+## 3.17.0
+
+### Soil probes
+- **Soil sensors adopt the name you set in the Spider Farmer app.** The integration
+  now reads each probe's app label (the device config's `senConfig` list, keyed by
+  probe serial) and uses it as the sensor's **default name** — so a probe named
+  "Front Left" in the app shows as "Front Left Temperature / Moisture / EC" instead
+  of "Soil 1 …". Highlights:
+  - **Live:** it polls the config each cycle and updates within about a minute of a
+    rename in the app (no HA restart needed).
+  - **Read-only:** the app is the source of truth. A **custom name you set in HA still
+    wins** — the app name is only the default/placeholder. (An optional HA→app push is
+    parked for a future release.)
+  - **Non-destructive:** only the display name changes — entity IDs, history, and
+    statistics are untouched (soil-probe entity IDs are slot-based, not name-based).
+  - Per-device soil **averages** are unaffected (they aren't probes).
+
 ## 3.16.5
 
 ### Devices
@@ -320,4 +337,31 @@ Consolidates the 3.11.2 beta series into a stable release.
 - Test suite asserts the cloud CA is bundled, public-only (no private key), and distinct from the device-facing CA
 
 ## 3.4.1
-- TLS certificates are now generated on first setup into `config/sf/certs/` (each install gets its own unique CA; no private key committed to the repo); requires the `crypt
+- TLS certificates are now generated on first setup into `config/sf/certs/` (each install gets its own unique CA; no private key committed to the repo); requires the `cryptography` library
+- Ships brand icons in `custom_components/sf/brand/` (HA 2026.3+ local brand assets)
+- Added HACS `info.md`, GitHub issue templates, and CI (test suite + HACS + hassfest validation)
+
+## 3.4.0
+- **Detection rebuilt around real hardware capabilities**: AC5/AC10 power strips can host lights, fans, blowers, heaters, humidifiers, dehumidifiers, air sensors, and soil probes — so accessory blocks are no longer treated as Control-Box-exclusive
+- Outlets are now the sole type discriminator: any outlet block = power strip (>5 outlets is conclusive PS10 on sight); accessory blocks without outlets suggest CB tentatively
+- Power strips gain the full accessory entity set (air sensors, fan, blower, climate, lights, soil probes), all evidence-based — a loaded PS10 models exactly what's plugged into it
+- Control Boxes no longer get outlet entities at all (matches hardware: CBs never report outlet blocks)
+- CB detection now always uses the 3-frame window (accessory evidence is tentative), with the retype path correcting a loaded strip whose outlet block arrives late
+
+## 3.3.3
+- Soil probes on power strips now work correctly: the soil block is no longer Control-Box evidence (a probe on a PS5 previously retyped the strip as a CB)
+- Fixed soil discovery consuming probe IDs during the detection window (tentatively-typed devices would permanently skip their probes' entities)
+
+## 3.3.2
+- Mappings screen displays and accepts CB-scoped soil values (`cb1_soil1`, `cb2_soil1`); bare values (`soil1`) also accepted
+- Per-device soil duplicate validation actually shipped (a patch in 3.3.1 silently missed; global uniqueness was still enforced, blocking `soil1` on two CBs)
+- Typing a different device's prefix on a probe is rejected with a clear error (probes follow their physical port; moves aren't mapping edits)
+
+## 3.3.1
+- Soil numbering is now per-device: each Control Box (or strip) counts its own probes, so `cb1_soil1` and `cb2_soil1` coexist
+- Soil entity IDs are scoped to the host device: `sensor.sf_cb1_soil1_temperature`
+- A probe moved to a device where its number is taken auto-renumbers on that device
+
+## 3.3.0
+- Soil probes become slot citizens: `sensor.sf_soil1_temperature` / `_moisture` / `_ec` (serials leave the entity IDs; unique IDs stay serial-based so history survives)
+- Probe

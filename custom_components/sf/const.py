@@ -29,3 +29,4 @@ SIGNAL_DEVICE_AVAIL_FMT = "sf_avail_{}"   # .format(mac)
 SIGNAL_STATE_FMT    = "sf_state_{}"     # .format(state_topic)
 SIGNAL_NEW_FMT      = "sf_new_{}"       # .format(platform)
 SIGNAL_REMOVE_FMT   = "sf_remove_{}"    # .format(unique_id) — dynamic hide
+SIGNAL_SOIL_LABEL_FMT = "sf_soil_label_{}"  # .format(soil serial) — app rename

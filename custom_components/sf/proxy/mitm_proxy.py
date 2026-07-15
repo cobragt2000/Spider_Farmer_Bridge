@@ -85,6 +85,24 @@ def _classify_evidence(evidence: set, max_outlet: int) -> tuple[Optional[str], b
     return None, False
 
 
+def _senconfig_from(d):
+    """Locate the senConfig list in a getConfigField / getConfigFile payload:
+    getConfigField ["device","senConfig"] -> data.senConfig; getConfigFile ->
+    data.configFile.senConfig (or .configFile.device.senConfig)."""
+    if not isinstance(d, dict):
+        return None
+    if isinstance(d.get("senConfig"), list):
+        return d["senConfig"]
+    cf = d.get("configFile")
+    if isinstance(cf, dict):
+        if isinstance(cf.get("senConfig"), list):
+            return cf["senConfig"]
+        dev = cf.get("device")
+        if isinstance(dev, dict) and isinstance(dev.get("senConfig"), list):
+            return dev["senConfig"]
+    return None
+
+
 class ProxySession:
     """One active GGS Controller connection."""
 
@@ -358,7 +376,7 @@ class MITMProxy:
             ["device", "light"],  ["device", "light2"],
             ["device", "fan"],    ["device", "blower"],
             ["device", "heater"], ["device", "humidifier"],
-            ["device", "dehumidifier"],
+            ["device", "dehumidifier"], ["device", "senConfig"],
         ):
             try:
                 await sess.inject({
@@ -1004,6 +1022,14 @@ def _process_publish(
         if prune_cb is not None and session.device_cfg:
             prune_cb(session.mac_raw, session.evidence, session.device_cfg)
         session._outlet_discovery_pruned = True
+
+    # ── Soil-probe app names (senConfig[].label) — read-only ──────────────
+    if method in ("getConfigField", "getConfigFile"):
+        _sen = _senconfig_from(d)
+        if _sen:
+            _apply = getattr(mqtt_client, "apply_soil_labels", None)
+            if _apply is not None:
+                _apply(session.mac_raw, _sen)
 
     # ── Outlet config cache (v3.11.1a3): the whole ps5/ps10/outlet block
     # comes back from getConfigField ["device", <block>] as

@@ -392,6 +392,7 @@ def build_soil_entities(
     device_cfg: dict,
     slot: Optional[str] = None,        # the CB's slot (unused for ids)
     soil_slot: Optional[str] = None,   # the probe's logical slot (soil1...)
+    name_label: Optional[str] = None,  # app-set probe name (senConfig label)
 ) -> list[SfDef]:
     """3 sensors per soil probe. With a soil slot (v3.3.0) entity_ids are
     sf_{soil_slot}_{temperature|moisture|ec}; unique_ids stay serial-based
@@ -402,7 +403,9 @@ def build_soil_entities(
     dname  = _device_name(cfg)
     dmodel = _TYPE_LABELS.get((cfg.get("type", "") or "").lower(), "Display Panel")
     safe   = re.sub(r"[^a-zA-Z0-9_]", "_", str(sensor_id))
-    label  = soil_display_label(soil_slot) if soil_slot else f"Soil {sensor_id}"
+    label  = (name_label or "").strip() or (
+        soil_display_label(soil_slot) if soil_slot else f"Soil {sensor_id}"
+    )
 
     out: list[SfDef] = []
     for suffix, name, unit, device_class, icon in [

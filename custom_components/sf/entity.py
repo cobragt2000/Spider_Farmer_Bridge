@@ -31,11 +31,18 @@ from .const import (
     SIGNAL_AVAILABILITY,
     SIGNAL_DEVICE_AVAIL_FMT,
     SIGNAL_REMOVE_FMT,
+    SIGNAL_SOIL_LABEL_FMT,
     SIGNAL_STATE_FMT,
 )
 from .entity_defs import SfDef
 
 _LOGGER = logging.getLogger(__name__)
+
+import re as _re
+# Soil-probe sensor field: soil_{serial}_{suffix} (excludes the soil_avg_* device
+# averages). Lets a probe pick up its app-set name live.
+_SOIL_FIELD_RE = _re.compile(r"^soil_(?!avg_)(.+)_(temperature|moisture|ec)$")
+_SOIL_SUFFIX_WORD = {"temperature": "Temperature", "moisture": "Moisture", "ec": "EC"}
 
 
 class SfEntity(RestoreEntity):
@@ -134,6 +141,23 @@ class SfEntity(RestoreEntity):
                 )
             )
 
+        # App-set soil-probe name (senConfig label): subscribe and apply any
+        # name already known, so the sensor shows the app's name as its default
+        # (a custom HA name still overrides it).
+        m = _SOIL_FIELD_RE.match(self.d.field or "")
+        if m:
+            self._soil_suffix_word = _SOIL_SUFFIX_WORD[m.group(2)]
+            self.async_on_remove(
+                async_dispatcher_connect(
+                    self.hass,
+                    SIGNAL_SOIL_LABEL_FMT.format(m.group(1)),
+                    self._soil_label_changed,
+                )
+            )
+            lbl = self.bus._soil_label.get(m.group(1))
+            if lbl:
+                self._attr_name = f"{lbl} {self._soil_suffix_word}"
+
         # Seed: live cache first (device already reported), else restore.
         seeded = False
         for topic in self.state_topics:
@@ -164,6 +188,15 @@ class SfEntity(RestoreEntity):
             self._handle_payload(topic, payload)
             self.async_write_ha_state()
         return _handler
+
+    @callback
+    def _soil_label_changed(self, label: str) -> None:
+        word = getattr(self, "_soil_suffix_word", None)
+        if not word:
+            return
+        self._attr_name = f"{label} {word}"
+        if self.hass is not None:
+            self.async_write_ha_state()
 
     @callback
     def _availability_changed(self) -> None:

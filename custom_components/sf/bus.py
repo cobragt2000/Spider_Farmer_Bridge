@@ -27,6 +27,7 @@ from .const import (
     SIGNAL_AVAILABILITY,
     SIGNAL_DEVICE_AVAIL_FMT,
     SIGNAL_NEW_FMT,
+    SIGNAL_SOIL_LABEL_FMT,
     SIGNAL_STATE_FMT,
 )
 def reconcile_registry_to_slots(hass, slots: dict, soil_slots: dict | None = None) -> int:
@@ -179,6 +180,8 @@ class SfBus:
         self.device_display: dict[str, tuple[str, str]] = {}  # mac -> (name, model)
         self._outlet_mode: dict[str, str] = {}       # "{mac}_{n}" -> mode name
         self._soil_type: dict[str, str] = {}         # serial -> "Pro" | "Basic"
+        self._soil_label: dict[str, str] = {}        # serial -> app label (senConfig)
+        self._soil_cfg_cache: dict[str, dict] = {}   # serial -> full senConfig entry
         self.keep_offline: bool = True               # v3.9.0: keep entities for
                                                      # blocks that stop reporting
         self.env_entities: bool = True               # create Environment device
@@ -706,6 +709,31 @@ class SfBus:
                     entry, options={**(entry.options or {}), "soil_types": types}
                 )
 
+    @callback
+    def apply_soil_labels(self, mac_raw: str, entries: list) -> None:
+        """App-set soil-probe names (senConfig[].label): store per serial and
+        live-rename the probe's sensors. Read-only — the app is the source of
+        truth; a blank/absent label leaves the default 'Soil N'. A custom HA
+        entity name still wins (HA's name_by_user overrides the default)."""
+        if not isinstance(entries, list):
+            return
+        for e in entries:
+            if not isinstance(e, dict):
+                continue
+            serial = str(e.get("id") or "").strip()
+            if not serial:
+                continue
+            self._soil_cfg_cache[serial] = dict(e)
+            raw = e.get("label")
+            label = raw.strip() if isinstance(raw, str) else ""
+            if not label or self._soil_label.get(serial) == label:
+                continue
+            self._soil_label[serial] = label
+            async_dispatcher_send(
+                self.hass, SIGNAL_SOIL_LABEL_FMT.format(serial), label
+            )
+            DIAG.bus_event(f"soil_label {serial} -> {label!r}")
+
     def register_soil(self, mac_raw: str, sensor_id: str, device_cfg: dict) -> None:
         slot = self._slot_for_cfg(
             {**device_cfg, "mac": device_cfg.get("mac", mac_raw)}
@@ -713,6 +741,7 @@ class SfBus:
         self._add_defs(build_soil_entities(
             mac_raw, sensor_id, device_cfg,
             slot=slot, soil_slot=self.get_soil_slot(sensor_id, mac_raw),
+            name_label=self._soil_label.get(sensor_id),
         ))
         # v3.11.2b0: per-device average soil sensors, created once when the
         # first probe on this device is seen (gated on probe presence).
