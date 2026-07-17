@@ -14,12 +14,6 @@ Spider Farmer cloud: devices keep working in the SF app exactly as before,
 while every status frame passing through becomes live HA state and (optionally)
 HA can inject commands back.
 
-An independent Home Assistant integration for Spider Farmer GGS controllers.
-It speaks the controllers' own protocol, first documented by the community
-projects credited below, and is implemented from this project's own packet
-captures — a TLS proxy, MQTT codec, normalizer, and command translator feeding
-native HA entities.
-
 ---
 
 ## Screenshots
@@ -206,36 +200,43 @@ each release automatically. Two cards are bundled:
 - **`custom:spider-farmer-card`** — the main tent card (below).
 - **`custom:ppfd-3d-card`** — a 3D PPFD visualizer for Spider Farmer SE4500 /
   SF2000 grow lights. Configure it per its own options (`light_model`,
-  `entities`). Note: it loads three.js from a CDN at runtime, so its 3D view
-  needs internet access.
+  `entities`).
 
 The main card (`custom:spider-farmer-card`) is a single tabbed card:
 
 - **Overview** — environment parameter tiles (Air Temp, Humidity, VPD, CO2,
   PPFD, Soil Temp/Moisture/EC) plus light / fan / blower / climate controls.
-- **Config** — the Environment editor (day/night targets + dead zones for
-  Temp, Humidity, CO2, plus day-cycle times) and per-outlet mode configuration.
+- **Environment** — day/night targets and dead zones for Temp, Humidity, and
+  CO2, plus the day-cycle start/stop times.
+- **Outlets** — per-outlet mode configuration for the strips nested under this
+  panel.
+- **Calibration** — editable sensor calibration mirroring the SF app: air
+  offsets (Air Temp, Humidity, PPFD, CO2) and per-probe soil offsets (Temp,
+  Moisture, EC) plus a substrate-type picker on Pro probes. Editing a value
+  writes it straight back to the controller.
 
 Add it to a dashboard once installed:
 
 ```yaml
 type: custom:spider-farmer-card
 panel: dp1                   # the display panel's slot (sf_dp1_*)
-outlets: [dp1, ac5, ac10]    # slots whose outlet modes to show on the Config tab (optional)
+outlets: [dp1, ac5, ac10]    # slots whose outlet modes to show on the Outlets tab (optional)
 title: Grow Tent             # optional
-default_tab: overview        # optional: "overview" (default) or "config"
+default_tab: overview        # optional: "overview" (default), "environment", "outlets", or "calibration"
 ```
 
-Entities render only when they exist, so partial setups display cleanly, and
-the Config tab appears only when the environment/outlet-mode entities are
-present, and the Cali tab appears only when a panel has calibration entities.
-Enabling the card loads the element globally but has no effect until you add it
-to a dashboard.
+Entities render only when they exist, so partial setups display cleanly: each
+of the Environment, Outlets, and Calibration tabs appears only when that
+panel actually has the matching entities. Enabling the card loads the element
+globally but has no effect until you add it to a dashboard.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/cobragt2000/spider_farmer_bridge/main/docs/images/15_card_overview.png" width="270" alt="Spider Farmer card — Overview tab" />
-  <img src="https://raw.githubusercontent.com/cobragt2000/spider_farmer_bridge/main/docs/images/16_card_config.png" width="270" alt="Spider Farmer card — Config tab" />
-  <img src="https://raw.githubusercontent.com/cobragt2000/spider_farmer_bridge/main/docs/images/17_card_cali.png" width="270" alt="Spider Farmer card — Cali tab" />
+  <img src="https://raw.githubusercontent.com/cobragt2000/spider_farmer_bridge/main/docs/images/15_card_overview.png" width="245" alt="Spider Farmer card — Overview tab" />
+  <img src="https://raw.githubusercontent.com/cobragt2000/spider_farmer_bridge/main/docs/images/16_card_config.png" width="245" alt="Spider Farmer card — Environment tab" />
+</p>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/cobragt2000/spider_farmer_bridge/main/docs/images/19_card_outlets.png" width="245" alt="Spider Farmer card — Outlets tab" />
+  <img src="https://raw.githubusercontent.com/cobragt2000/spider_farmer_bridge/main/docs/images/17_card_cali.png" width="245" alt="Spider Farmer card — Calibration tab" />
 </p>
 
 The `custom:ppfd-3d-card` 3D PPFD visualizer for SE4500 / SF2000 grow lights:
@@ -264,8 +265,6 @@ identity or history.
 
 - Entity IDs from any earlier version rename in place automatically on first
   boot (history follows the rename)
-- Cached states from before 3.2.3 lack the ownership stamp and are not
-  restored once — entities show `unknown` for the seconds until devices report
 - The `logs/` folder inside `custom_components/sf/` is lost if you delete the
   folder before extracting an update; extract over it, or move the log path
   in Settings

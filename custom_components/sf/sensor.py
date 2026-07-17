@@ -60,6 +60,37 @@ class SfSensor(SfEntity, SensorEntity):
         return self.d.state_class == "measurement" and not self.d.options
 
     @callback
+    def _restore(self, last) -> None:
+        # HA records a device_class sensor's state in the *display* unit, not
+        # the native one. Our temperature sensors are native °C but shown in
+        # the user's unit (often °F), so last.state is already converted.
+        # Feeding it back through _handle_payload would treat that °F number
+        # as °C and double-convert on display (e.g. 80 °F restored as 80 °C ->
+        # shown 176 °F, spiking graphs after every reboot). Convert the saved
+        # display value back to the native unit first.
+        native_unit = self.d.unit
+        saved_unit = last.attributes.get("unit_of_measurement")
+        if (
+            self._is_numeric
+            and self.d.device_class == "temperature"
+            and native_unit
+            and saved_unit
+            and saved_unit != native_unit
+        ):
+            try:
+                v = float(last.state)
+            except (ValueError, TypeError):
+                super()._restore(last)
+                return
+            if saved_unit in ("°F", "℉"):
+                v = (v - 32) * 5 / 9
+            elif saved_unit == "K":
+                v = v - 273.15
+            self._handle_payload(self.d.state_topic, f"{round(v, 1)}")
+            return
+        super()._restore(last)
+
+    @callback
     def _handle_payload(self, topic: str, payload: str) -> None:
         payload = (payload or "").strip()
         if not payload:

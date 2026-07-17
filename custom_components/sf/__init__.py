@@ -372,6 +372,12 @@ def _migrate_soil_cal_entity_ids(hass: HomeAssistant, entry: ConfigEntry) -> Non
     removed = 0
     planned: list[tuple[str, str]] = []
     for e in list(er.async_entries_for_config_entry(ent_reg, entry.entry_id)):
+        # Only the legacy 3.18.x read-only cal SENSORS are in scope here. Since
+        # 3.19 the real cal entities live in the number./select. domains and are
+        # homed correctly by their platform; matching them by unique_id and
+        # trying to park them under a sensor. temp id fails ("same domain").
+        if e.entity_id.split(".", 1)[0] != "sensor":
+            continue
         uid = e.unique_id or ""
         if phantom_re.match(uid):
             try:

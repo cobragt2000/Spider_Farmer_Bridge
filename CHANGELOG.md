@@ -3,6 +3,24 @@
 All notable changes to the Spider Farmer Bridge integration.
 Each section below is ready to paste into the matching GitHub release.
 
+## 3.19.1
+
+### Fixes
+- **Air/soil temperature spiked to ~176 °F on every reboot.** Home Assistant records a
+  `temperature` sensor in the *display* unit (°F for Imperial users) while the integration's
+  native unit is °C, so the keep-offline restore read the saved °F value back and re-applied
+  it as °C — double-converting (e.g. 80 °F came back as 176 °F) and skewing history and
+  automations for the seconds until the device next reported. The restore now converts the
+  saved display value back to native °C first. Existing spikes already in history are
+  unaffected; no new ones will be recorded.
+- **Startup error log: "soil-cal park failed … New entity ID should be same domain".**
+  The 3.18.x soil-calibration cleanup migration matched entities by unique_id only, so
+  on 3.19 it also grabbed the new editable `number.` calibration entities and tried to
+  park them under a `sensor.` temp id — which HA rejects (a rename can't change domain).
+  The migration is now scoped to the legacy `sensor.` entities only; the `number.` /
+  `select.` calibration entities are left alone (their platform already homes them
+  correctly). No user action needed. (Bundled card v0.4.0.)
+
 ## 3.19.0
 
 ### Added
@@ -15,11 +33,14 @@ Each section below is ready to paste into the matching GitHub release.
     (box inputs, 0.1 steps).
 - **Substrate type.** Pro probes get a **Substrate** selector — Clay soil / Coco coir /
   Peat soil — that writes the probe's `soilType`.
-- **Card "Cali" tab.** `custom:spider-farmer-card` gains a third tab (shown only when a
-  panel has calibration entities) that mirrors the app's calibration screens: an Air
-  Calibration section (Air Temp / Humidity / PPFD / CO2) and a per-probe Soil Calibration
-  section (Temp / Moisture / EC + Substrate picker). Editing a value writes it straight
-  to the controller. (bundled card v0.3.0)
+- **Card tab overhaul.** `custom:spider-farmer-card` is reorganized into four tabs —
+  **Overview**, **Environment**, **Outlets**, and **Calibration** — each shown only when
+  the panel has the matching entities. Environment (day/night targets + dead zones) and
+  Outlets (per-outlet modes) are now separate tabs, and the new Calibration tab mirrors
+  the app's calibration screens: an Air Calibration section (Air Temp / Humidity / PPFD /
+  CO2) and a per-probe Soil Calibration section (Temp / Moisture / EC + Substrate picker).
+  Editing a value writes it straight to the controller. `default_tab` accepts `overview`,
+  `environment`, `outlets`, or `calibration`. (bundled card v0.4.0)
 
 ### Notes
 - Air-temp and soil-temp offsets are entered in °F (matching the app) and converted to
