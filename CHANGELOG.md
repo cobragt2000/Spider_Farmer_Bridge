@@ -3,6 +3,27 @@
 All notable changes to the Spider Farmer Bridge integration.
 Each section below is ready to paste into the matching GitHub release.
 
+## 3.19.4
+
+### Added
+- **Integration-usage badge** in the README (Home Assistant Analytics install count).
+- **Calibration air offsets get a slider + entry box.** On the card's Calibration tab, Air
+  Temp, Humidity, PPFD, and CO2 now show a slider on the left and an editable box on the
+  right — adjust either and the other follows.
+
+### Changed
+- **Number formatting follows each field's step.** Whole-number / 10-step values (Environment
+  Day/Night, dead zones, CO2 calibration) show without a decimal (`62`, `1 °F`, `250 ppm`),
+  while 0.1-step calibration offsets keep one decimal (`0.0`, `-3.0`, `1.5`).
+
+### Fixes
+- **Card display issues on mobile.** The tab bar no longer clips the last tab (Calibration)
+  on narrow screens — it scrolls horizontally instead. The Environment Day/Night number
+  boxes no longer clip their values (e.g. "62" showing as "6", or a 4-digit CO2 target
+  showing blank): the mobile number spin buttons are removed, the boxes are a fixed width
+  sized for up to four digits regardless of screen size, and the Dead Zone slider takes
+  the remaining width. (Bundled card v0.7.0.)
+
 ## 3.19.2
 
 ### Added
@@ -14,14 +35,7 @@ Each section below is ready to paste into the matching GitHub release.
   already that probe).
 - **"All Soil Sensors Stats" table on the card.** Also on the Overview tab (2+ probes), a
   collapsible **All Soil Sensors Stats** section lists every probe in one table — name,
-  Temp, WC (moisture), and EC per row.
-
-### Fixes
-- **Card display issues on mobile.** The tab bar no longer clips the last tab (Calibration)
-  on narrow screens — it scrolls horizontally instead. The Environment Day/Night number
-  boxes no longer clip their values (e.g. "62" showing as "6" or the CO2 boxes appearing
-  empty): the mobile number spin buttons that stole the box width are removed. (Bundled
-  card v0.6.1.)
+  Temp, WC (moisture), and EC per row. (Bundled card v0.6.0.)
 
 ## 3.19.1
 
