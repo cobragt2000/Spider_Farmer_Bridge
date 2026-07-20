@@ -33,6 +33,7 @@ async def async_setup_entry(
         async_add_entities(
             SfScheduleSensor(bus, d) if d.kind == "schedule"
             else SfAlarmsSensor(bus, d) if d.kind == "alarms"
+            else SfAlarmSettingsSensor(bus, d) if d.kind == "alarm_settings"
             else SfSensor(bus, d)
             for d in defs
         )
@@ -161,4 +162,31 @@ class SfAlarmsSensor(SfSensor):
             **(self._attr_extra_state_attributes or {}),
             "count": len(events),
             "events": events,
+        }
+
+
+class SfAlarmSettingsSensor(SfSensor):
+    """Controller alarm thresholds: state = number of enabled alarms; the
+    decoded climate/substrate/other groups are exposed as the ``settings``
+    attribute for the card's Alerts tab to read and edit."""
+
+    @callback
+    def _handle_payload(self, topic: str, payload: str) -> None:
+        import json
+        try:
+            settings = json.loads(payload) if payload else {}
+        except (ValueError, TypeError):
+            settings = {}
+        if not isinstance(settings, dict):
+            settings = {}
+        enabled = sum(
+            1
+            for grp in ("climate", "substrate", "other")
+            for m in (settings.get(grp) or [])
+            if isinstance(m, dict) and m.get("enabled")
+        )
+        self._attr_native_value = f"{enabled} on"
+        self._attr_extra_state_attributes = {
+            **(self._attr_extra_state_attributes or {}),
+            "settings": settings,
         }

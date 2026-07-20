@@ -461,6 +461,10 @@ _SCHEDULE_SCHEMA = vol.Schema({
     vol.Required("entity_id"): cv.entity_ids,
     vol.Required("periods"): [dict],
 })
+_ALARM_SETTINGS_SCHEMA = vol.Schema({
+    vol.Required("entity_id"): cv.entity_ids,
+    vol.Required("settings"): dict,
+})
 
 
 def _proxy_for_entity(hass: HomeAssistant, ent) -> object | None:
@@ -506,12 +510,29 @@ def _async_register_services(hass: HomeAssistant) -> None:
             if proxy is not None:
                 await proxy.write_outlet_schedule(m.group(1), int(m.group(2)), periods)
 
+    async def _set_alarm_settings(call: ServiceCall) -> None:
+        settings = call.data.get("settings") or {}
+        ent_reg = er.async_get(hass)
+        for eid in call.data.get("entity_id", []):
+            ent = ent_reg.async_get(eid)
+            uid = ent.unique_id if ent else ""
+            if not uid or not uid.startswith("ggs_"):
+                _LOGGER.warning("set_alarm_settings: %s is not a Spider Farmer entity", eid)
+                continue
+            mac = uid[4:].split("_", 1)[0]
+            proxy = _proxy_for_entity(hass, ent)
+            if proxy is not None:
+                await proxy.write_alarm_settings(mac, settings)
+
     if not hass.services.has_service(DOMAIN, "set_se_schedule"):
         hass.services.async_register(
             DOMAIN, "set_se_schedule", _set_se_schedule, schema=_SCHEDULE_SCHEMA)
     if not hass.services.has_service(DOMAIN, "set_outlet_schedule"):
         hass.services.async_register(
             DOMAIN, "set_outlet_schedule", _set_outlet_schedule, schema=_SCHEDULE_SCHEMA)
+    if not hass.services.has_service(DOMAIN, "set_alarm_settings"):
+        hass.services.async_register(
+            DOMAIN, "set_alarm_settings", _set_alarm_settings, schema=_ALARM_SETTINGS_SCHEMA)
 
 
 def _integration_version() -> str:

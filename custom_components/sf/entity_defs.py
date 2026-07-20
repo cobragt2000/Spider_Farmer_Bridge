@@ -495,6 +495,20 @@ def build_alarms_entity(device_cfg, slot=None):
     )
 
 
+def build_alarm_settings_entity(device_cfg, slot=None):
+    """Per-controller alarm-thresholds sensor: state = count of enabled alarms,
+    attribute ``settings`` = the decoded climate/substrate/other groups the
+    card's Alerts tab edits. Created on first alarm-block parse."""
+    mac_raw = device_cfg.get("mac", "")
+    return SfDef(
+        platform="sensor", field="alarm_settings", name="Alarm Settings",
+        kind="alarm_settings", mac=_mac(mac_raw), mac_raw=mac_raw,
+        device_name=_device_name(device_cfg), device_model=_device_model(device_cfg),
+        slot=slot, entity_category="diagnostic", icon="mdi:bell-cog",
+        object_id=(f"sf_{slot}_alarm_settings" if slot else None),
+    )
+
+
 def build_air_calibration_entities(device_cfg, slot=None):
     """Editable air-sensor calibration offsets (config-file top-level
     ``calibration`` block {temp,humi,co2,ppfd}). Air-temp is entered in degF

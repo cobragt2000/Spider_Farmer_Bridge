@@ -141,6 +141,7 @@ from .entity_defs import (
     build_env_entities,
     build_air_calibration_entities,
     build_alarms_entity,
+    build_alarm_settings_entity,
     build_soil_calibration_entities,
     SUBSTRATE_OPTIONS,
     _device_model,
@@ -805,6 +806,22 @@ class SfBus:
                 self.hass.bus.async_fire("sf_alarm", {"mac": mac, **e})
             except Exception:  # noqa: BLE001 — never let event firing break parsing
                 pass
+
+    def apply_alarm_settings(self, mac_raw: str, alarm: dict) -> None:
+        """Decode the controller alarm-threshold block and publish it for the
+        card's Alerts tab. Creates the sensor once. State = enabled count."""
+        if not isinstance(alarm, dict):
+            return
+        from .proxy.normalizer import decode_alarm_settings
+        decoded = decode_alarm_settings(alarm)
+        if decoded is None:
+            return
+        import json as _json
+        mac = _mac(mac_raw)
+        if f"ggs_{mac}_alarm_settings" not in self._registered:
+            cfg = {"mac": mac_raw, "type": self._type_for_mac(mac_raw) or "cb"}
+            self._add_defs([build_alarm_settings_entity(cfg, slot=self._slot_for_cfg(cfg))])
+        self.publish(f"ggs/ha/{mac}/alarm_settings/state", _json.dumps(decoded))
 
     def apply_soil_labels(self, mac_raw: str, entries: list) -> None:
         """App-set soil-probe names (senConfig[].label): store per serial and

@@ -220,6 +220,10 @@ The main card (`custom:spider-farmer-card`) is a single tabbed card:
   offsets (Air Temp, Humidity, PPFD, CO2) and per-probe soil offsets (Temp,
   Moisture, EC) plus a substrate-type picker on Pro probes. Editing a value
   writes it straight back to the controller.
+- **Alerts** — editable alarm thresholds, mirroring the app's Alarm Settings:
+  Climate (Air Temp, Humidity, VPD, CO2, PPFD), Substrate (Soil Temp, WC, Soil
+  EC), and Other Device flags. Each has an enable toggle and Max/Min limits;
+  edits are staged and written together with Save.
 
 Add it to a dashboard once installed:
 

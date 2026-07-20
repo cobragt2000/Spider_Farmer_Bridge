@@ -120,6 +120,65 @@ def decode_alarm_log(data: Any) -> list:
     return [e for e in (_decode_alarm_entry(a) for a in (lst or [])) if e]
 
 
+# Alarm-threshold metrics: (wire key, label, unit, kind, is_temp, step).
+# kind: "range" = min+max, "max" = max only. Temp values are °C on the wire.
+_ALARM_CLIMATE = [
+    ("temp", "Air Temp", "°F", "range", True, 1),
+    ("humi", "Air Humi", "%", "range", False, 1),
+    ("vpd", "VPD", "kPa", "range", False, 0.1),
+    ("co2", "CO2", "ppm", "range", False, 10),
+    ("ppfd", "PPFD", "µmol/m²/s", "max", False, 10),
+]
+_ALARM_SUBSTRATE = [
+    ("tempSoil", "Soil Temp", "°F", "range", True, 1),
+    ("humiSoil", "WC", "%", "range", False, 1),
+    ("ECSoil", "Soil EC", "mS/cm", "range", False, 0.1),
+]
+_ALARM_OTHER = [
+    ("devOffline", "Device Offline"),
+    ("dehumiWaterFull", "Dehumidifier Water Full"),
+    ("lightTemp", "Light Over-Temperature"),
+    ("humiWaterLess", "Humidifier Water Low"),
+]
+
+
+def _alarm_c2f(v: Any):
+    try:
+        return round(float(v) * 9 / 5 + 32)
+    except (ValueError, TypeError):
+        return v
+
+
+def _decode_alarm_metric(spec, alarm):
+    key, label, unit, kind, is_temp, step = spec
+    b = alarm.get(key)
+    if not isinstance(b, dict):
+        return None
+    conv = _alarm_c2f if is_temp else (lambda x: x)
+    m = {"key": key, "label": label, "unit": unit, "kind": kind, "step": step,
+         "enabled": 1 if b.get("enabled") else 0}
+    if "vmax" in b:
+        m["max"] = conv(b["vmax"])
+    if kind == "range" and "vmin" in b:
+        m["min"] = conv(b["vmin"])
+    return m
+
+
+def decode_alarm_settings(alarm: Any) -> Optional[dict]:
+    """Decode the controller ``alarm`` block into card-friendly threshold
+    groups (climate/substrate ranges + other on/off flags). Temps -> °F."""
+    if not isinstance(alarm, dict):
+        return None
+    climate = [m for m in (_decode_alarm_metric(s, alarm) for s in _ALARM_CLIMATE) if m]
+    substrate = [m for m in (_decode_alarm_metric(s, alarm) for s in _ALARM_SUBSTRATE) if m]
+    other = [{"key": k, "label": lbl, "kind": "bool",
+              "enabled": 1 if alarm.get(k) else 0}
+             for k, lbl in _ALARM_OTHER if k in alarm]
+    if not (climate or substrate or other):
+        return None
+    return {"climate": climate, "substrate": substrate, "other": other}
+
+
 def _decode_outlet_periods(tp: Any) -> list:
     """Decode an outlet Time Slot timePeriod array (fixed 12 slots, on/off only,
     no brightness) into the ENABLED periods the card edits:

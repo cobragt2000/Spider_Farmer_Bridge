@@ -117,6 +117,20 @@ def _calibration_from(d):
     return None
 
 
+def _alarm_from(d):
+    """Alarm-threshold block: getConfigField ["alarm"] -> data.alarm;
+    getConfigFile -> data.configFile.alarm."""
+    if not isinstance(d, dict):
+        return None
+    a = d.get("alarm")
+    if isinstance(a, dict):
+        return a
+    cf = d.get("configFile")
+    if isinstance(cf, dict) and isinstance(cf.get("alarm"), dict):
+        return cf["alarm"]
+    return None
+
+
 class ProxySession:
     """One active GGS Controller connection."""
 
@@ -148,6 +162,7 @@ class ProxySession:
         self.env_cfg: dict = {}                      # environment "target" block cache
         self.cal_cfg: dict = {}                      # top-level ["calibration"] block cache
         self.senconfig: list = []                    # full ["device","senConfig"] array cache
+        self.alarm_cfg: dict = {}                    # top-level ["alarm"] block cache
         self.last_nonzero_level: Dict[str, int] = {}
         self.fan_state:   Dict[str, dict] = {}
         self.light_state: Dict[str, dict] = {}
@@ -583,6 +598,20 @@ class MITMProxy:
         await cmd_sess.inject(payload)
         _LOGGER.info("set_outlet_schedule: wrote %d slot(s) to %s O%s (block %s)",
                      len(periods), mac, n, block)
+        return True
+
+    async def write_alarm_settings(self, mac: str, settings: dict) -> bool:
+        """Write the controller's alarm threshold block (read-modify-write)."""
+        sess = self._sessions.get(_mac(mac))
+        if sess is None:
+            _LOGGER.warning("set_alarm_settings: no active session for mac=%s", mac)
+            return False
+        from .command_handler import build_alarm_settings
+        payload = build_alarm_settings(sess.mac_raw, sess.uid, settings, sess.alarm_cfg)
+        if not payload:
+            return False
+        await sess.inject(payload)
+        _LOGGER.info("set_alarm_settings: wrote alarm thresholds to %s", mac)
         return True
 
     def close_session(self, mac: str) -> bool:
@@ -1145,6 +1174,13 @@ def _process_publish(
             _acal = getattr(mqtt_client, "apply_air_calibration", None)
             if _acal is not None:
                 _acal(session.mac_raw, _cal)
+        _alarm = _alarm_from(d)
+        if _alarm:
+            # Cache the whole alarm block for RMW threshold writes.
+            session.alarm_cfg = dict(_alarm)
+            _aal = getattr(mqtt_client, "apply_alarm_settings", None)
+            if _aal is not None:
+                _aal(session.mac_raw, _alarm)
 
     # ── Outlet config cache (v3.11.1a3): the whole ps5/ps10/outlet block
     # comes back from getConfigField ["device", <block>] as

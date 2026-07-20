@@ -360,6 +360,44 @@ def build_outlet_schedule(mac, uid, n, block, periods, outlet_cfg):
             "msgId": _msg_id(), "uid": uid}
 
 
+_ALARM_TEMP_KEYS = {"temp", "tempSoil"}
+_ALARM_OTHER_KEYS = {"devOffline", "dehumiWaterFull", "lightTemp", "humiWaterLess"}
+
+
+def build_alarm_settings(mac, uid, settings, alarm_cfg):
+    """Read-modify-write the controller ``alarm`` threshold block from the
+    card's decoded settings ({climate, substrate, other}). Temps are entered
+    in °F and converted back to °C on the wire. keyPath ["alarm"]."""
+    if not isinstance(settings, dict):
+        return None
+    obj = copy.deepcopy(alarm_cfg) if isinstance(alarm_cfg, dict) and alarm_cfg else {}
+    for grp in ("climate", "substrate"):
+        for m in (settings.get(grp) or []):
+            if not isinstance(m, dict) or not m.get("key"):
+                continue
+            key = m["key"]
+            b = obj.get(key)
+            if not isinstance(b, dict):
+                b = {}
+                obj[key] = b
+            conv = (lambda x: round((float(x) - 32) * 5 / 9, 4)) \
+                if key in _ALARM_TEMP_KEYS else (lambda x: x)
+            if "enabled" in m:
+                b["enabled"] = 1 if m["enabled"] else 0
+            for src, dst in (("max", "vmax"), ("min", "vmin")):
+                if src in m and m[src] is not None:
+                    try:
+                        b[dst] = conv(m[src])
+                    except (ValueError, TypeError):
+                        pass
+    for m in (settings.get("other") or []):
+        if isinstance(m, dict) and m.get("key") in _ALARM_OTHER_KEYS:
+            obj[m["key"]] = 1 if m.get("enabled") else 0
+    return {"method": "setConfigField", "pid": mac,
+            "params": {"keyPath": ["alarm"], "alarm": obj},
+            "msgId": _msg_id(), "uid": uid}
+
+
 def _cmd_se_mode(mac, uid, value):
     mode = {"manual": 0, "automatic": 1, "0": 0, "1": 1}.get(
         str(value).strip().lower()

@@ -3,6 +3,18 @@
 All notable changes to the Spider Farmer Bridge integration.
 Each section below is ready to paste into the matching GitHub release.
 
+## 3.19.8
+
+### Added
+- **Alarm thresholds + card "Alerts" tab.** The controller's alarm settings are now editable:
+  the integration decodes the `alarm` block onto a per-controller
+  **`sensor.sf_<slot>_alarm_settings`** (`settings` attribute), and the tent card gains an
+  **Alerts** tab mirroring the SF app — Climate (Air Temp, Humidity, VPD, CO2, PPFD),
+  Substrate (Soil Temp, WC, Soil EC), and Other Device (offline, water-full, over-temp, …).
+  Each alert has an enable toggle and Max/Min limits; edits stage and write together via the
+  new **`sf.set_alarm_settings`** service (read-modify-write; temps entered in °F, stored in
+  °C). The tab appears only when the controller has reported its alarm block.
+
 ## 3.19.7
 
 ### Added

@@ -51,3 +51,27 @@ set_outlet_schedule:
       selector:
         object:
 
+set_alarm_settings:
+  name: Set alarm thresholds
+  description: >-
+    Write the controller's alarm threshold settings (climate, substrate, and
+    other-device alerts). Used by the tent card's Alerts tab; can also be
+    called from automations.
+  fields:
+    entity_id:
+      name: Controller
+      description: Any entity of the controller whose alarms to set (e.g. its Alarm Settings sensor).
+      required: true
+      selector:
+        entity:
+          integration: sf
+    settings:
+      name: Settings
+      description: >-
+        The decoded threshold groups {climate, substrate, other}. Each metric
+        is a mapping with key, enabled (0/1), and max/min (temps in °F).
+      required: true
+      selector:
+        object:
+
+
