@@ -140,6 +140,7 @@ from .entity_defs import (
     build_soil_avg_entities,
     build_env_entities,
     build_air_calibration_entities,
+    build_alarms_entity,
     build_soil_calibration_entities,
     SUBSTRATE_OPTIONS,
     _device_model,
@@ -186,6 +187,8 @@ class SfBus:
         self._soil_label: dict[str, str] = {}        # serial -> app label (senConfig)
         self._soil_cfg_cache: dict[str, dict] = {}   # serial -> full senConfig entry
         self._air_cal: dict[str, dict] = {}          # mac -> air calibration block
+        self._alarm_events: dict[str, dict] = {}     # mac -> {id: event}
+        self._alarm_seeded: set[str] = set()         # macs seen once (don't fire on backfill)
         self.keep_offline: bool = True               # v3.9.0: keep entities for
                                                      # blocks that stop reporting
         self.env_entities: bool = True               # create Environment device
@@ -768,6 +771,40 @@ class SfBus:
                             ("ppfd", "cal_ppfd")):
             if cal.get(wire) is not None:
                 self.publish(f"ggs/ha/{mac}/{field}/state", cal[wire])
+
+    def apply_alarms(self, mac_raw: str, events: list) -> None:
+        """Merge decoded alarm-log entries for a controller: create the Alarms
+        sensor once, publish the merged list (newest first), and fire an
+        ``sf_alarm`` HA event for each genuinely new entry (not on the first
+        backfill, so a restart doesn't replay old alarms into automations)."""
+        if not isinstance(events, list) or not events:
+            return
+        import json as _json
+        mac = _mac(mac_raw)
+        store = self._alarm_events.setdefault(mac, {})
+        seeded = mac in self._alarm_seeded
+        fresh = []
+        for e in events:
+            if not isinstance(e, dict) or e.get("id") is None:
+                continue
+            eid = e["id"]
+            if eid not in store and seeded:
+                fresh.append(e)
+            store[eid] = e
+        self._alarm_seeded.add(mac)
+        if f"ggs_{mac}_alarms" not in self._registered:
+            cfg = {"mac": mac_raw, "type": self._type_for_mac(mac_raw) or "cb"}
+            self._add_defs([build_alarms_entity(cfg, slot=self._slot_for_cfg(cfg))])
+        merged = sorted(
+            store.values(),
+            key=lambda x: (x.get("epoch") or 0, x.get("id") or 0), reverse=True,
+        )[:50]
+        self.publish(f"ggs/ha/{mac}/alarms/state", _json.dumps(merged))
+        for e in fresh:
+            try:
+                self.hass.bus.async_fire("sf_alarm", {"mac": mac, **e})
+            except Exception:  # noqa: BLE001 — never let event firing break parsing
+                pass
 
     def apply_soil_labels(self, mac_raw: str, entries: list) -> None:
         """App-set soil-probe names (senConfig[].label): store per serial and

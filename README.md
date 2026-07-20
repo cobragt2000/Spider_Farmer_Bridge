@@ -283,6 +283,10 @@ The schedule is exposed on `sensor.sf_se1_schedule` (period count as state, the
 decoded `periods` list as an attribute) and written back with the
 `sf.set_se_schedule` service, so you can also drive it from automations.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/cobragt2000/spider_farmer_bridge/main/docs/images/23_light_card.png" width="300" alt="Spider Light card — dial, mode, and schedule editor" />
+</p>
+
 ## Entity ID scheme
 
 ```

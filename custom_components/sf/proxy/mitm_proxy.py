@@ -859,6 +859,16 @@ def _process_publish(
     DIAG.frame(session.mac, topic_mac, pid_mac, str(data.get("method")), data)
 
     method = data.get("method")
+
+    # ── Alarm / event log (getAlarmLog response, app-initiated) ───────────
+    if method == "getAlarmLog":
+        from .normalizer import decode_alarm_log
+        events = decode_alarm_log(data.get("data", {}))
+        apply = getattr(mqtt_client, "apply_alarms", None)
+        if apply is not None and events:
+            apply(session.mac_raw, events)
+        return
+
     if method not in ("getDevSta", "getConfigField", "getConfigFile"):
         return
 
@@ -870,6 +880,16 @@ def _process_publish(
         session.uid = uid
 
     d = data.get("data", {})
+
+    # ── alarmLast: latest alarm pushed passively in every getDevSta ───────
+    if method == "getDevSta":
+        al = d.get("alarmLast") if isinstance(d, dict) else None
+        if isinstance(al, dict) and al.get("epoch") is not None:
+            from .normalizer import _decode_alarm_entry
+            entry = _decode_alarm_entry(al)
+            apply = getattr(mqtt_client, "apply_alarms", None)
+            if apply is not None and entry:
+                apply(session.mac_raw, [entry])
 
     # ── Device type detection (evidence accumulated across frames) ────────
     if method == "getDevSta":

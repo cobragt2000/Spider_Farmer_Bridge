@@ -3,6 +3,18 @@
 All notable changes to the Spider Farmer Bridge integration.
 Each section below is ready to paste into the matching GitHub release.
 
+## 3.19.7
+
+### Added
+- **Controller alarm / event feed.** The integration now consumes the controller's alarm log
+  (the `getAlarmLog` response, plus the `alarmLast` block pushed in every status frame) and
+  exposes a per-controller **`sensor.sf_<slot>_alarms`** — state is the most recent alarm's
+  time, with the decoded list (`id`, `time`, `devType`, `alarmType`) in the `events`
+  attribute. A new HA event **`sf_alarm`** fires for each new alarm so automations can react
+  (it does not replay old alarms on restart). Note: `devType`/`alarmType` are surfaced as raw
+  values with placeholder labels for now — only one combination (devType 8 / alarmType 2) has
+  been captured, so the human-readable labels will be filled in as more logs come in.
+
 ## 3.19.6
 
 ### Added

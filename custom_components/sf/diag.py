@@ -75,7 +75,11 @@ _SE_TOP_LEVEL = {
     "isForceSlaveMode", "AutoModeCheck", "lastOnBrightness",
     "lastManualBrightness", "lightModel",
 }
-_KNOWN_BLOCKS = set(_KNOWN_FIELDS) | {"outlet", "sensors"} | _SE_TOP_LEVEL
+# Alarm/event log: getAlarmLog carries count/list; getDevSta pushes alarmLast
+# (consumed since 3.19.7). oplogLast (operation log) is not consumed yet.
+_ALARM_BLOCKS = {"count", "list", "alarmLast", "oplogLast"}
+_KNOWN_BLOCKS = (set(_KNOWN_FIELDS) | {"outlet", "sensors"}
+                 | _SE_TOP_LEVEL | _ALARM_BLOCKS)
 
 
 class SfDiag:

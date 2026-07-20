@@ -79,7 +79,14 @@ Deferred items to pick up later. Not scheduled; captured so they aren't lost.
 
 ## Device alarm / event history (spotted 2026-07-20 log)
 
-8. **Alarms / events feed** — the controller reports an event history the integration
+8. **[PARTLY DONE in 3.19.7] Alarms / events feed** — plumbing shipped: `getAlarmLog`
+   responses + the `alarmLast` block are decoded onto `sensor.sf_<slot>_alarms` (state =
+   latest time, `events` attribute) and an `sf_alarm` HA event fires on new entries.
+   **Remaining:** decode the `devType` / `alarmType` enums into human labels (only devType 8
+   / alarmType 2 captured so far), consider polling `getAlarmLog` for a fuller history, and
+   confirm the `alarmLast` block structure from a live capture. Original notes below.
+
+   The controller reports an event history the integration
    doesn't consume yet. Seen as two top-level blocks in a getConfigFile/status frame:
    ```
    "count": 1

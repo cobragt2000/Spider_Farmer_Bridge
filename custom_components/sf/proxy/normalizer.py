@@ -82,6 +82,44 @@ def _decode_se_periods(tp: Any) -> list:
     return out
 
 
+# devType / alarmType are numeric enums; only devType 8 / alarmType 2 have been
+# captured so far, so the raw values are surfaced with a best-effort label that
+# can be extended as more captures arrive.
+_ALARM_DEVTYPE = {}     # id -> label (extend from future captures)
+_ALARM_TYPE = {}        # id -> label
+
+
+def _alarm_iso(epoch: Any) -> Optional[str]:
+    try:
+        from datetime import datetime, timezone
+        return datetime.fromtimestamp(int(epoch), tz=timezone.utc).isoformat()
+    except (ValueError, TypeError, OSError, OverflowError):
+        return None
+
+
+def _decode_alarm_entry(a: Any) -> Optional[dict]:
+    """One alarm-log entry {id, epoch, devType, alarmType} -> card/HA dict."""
+    if not isinstance(a, dict):
+        return None
+    dt = a.get("devType")
+    at = a.get("alarmType")
+    return {
+        "id": a.get("id"),
+        "epoch": a.get("epoch"),
+        "time": _alarm_iso(a.get("epoch")),
+        "devType": dt,
+        "device": _ALARM_DEVTYPE.get(dt, f"Device {dt}" if dt is not None else None),
+        "alarmType": at,
+        "alarm": _ALARM_TYPE.get(at, f"Alarm {at}" if at is not None else None),
+    }
+
+
+def decode_alarm_log(data: Any) -> list:
+    """getAlarmLog response data {count, list:[…]} -> list of decoded entries."""
+    lst = data.get("list") if isinstance(data, dict) else None
+    return [e for e in (_decode_alarm_entry(a) for a in (lst or [])) if e]
+
+
 def _decode_outlet_periods(tp: Any) -> list:
     """Decode an outlet Time Slot timePeriod array (fixed 12 slots, on/off only,
     no brightness) into the ENABLED periods the card edits:

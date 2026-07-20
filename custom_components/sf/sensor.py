@@ -31,7 +31,9 @@ async def async_setup_entry(
     @callback
     def _add(defs: list[SfDef]) -> None:
         async_add_entities(
-            SfScheduleSensor(bus, d) if d.kind == "schedule" else SfSensor(bus, d)
+            SfScheduleSensor(bus, d) if d.kind == "schedule"
+            else SfAlarmsSensor(bus, d) if d.kind == "alarms"
+            else SfSensor(bus, d)
             for d in defs
         )
 
@@ -137,4 +139,26 @@ class SfScheduleSensor(SfSensor):
         self._attr_extra_state_attributes = {
             **(self._attr_extra_state_attributes or {}),
             "periods": periods,
+        }
+
+
+class SfAlarmsSensor(SfSensor):
+    """Controller alarm/event log: state = the most recent alarm's time (or
+    'none'); the decoded list is exposed as the ``events`` attribute."""
+
+    @callback
+    def _handle_payload(self, topic: str, payload: str) -> None:
+        import json
+        try:
+            events = json.loads(payload) if payload else []
+        except (ValueError, TypeError):
+            events = []
+        if not isinstance(events, list):
+            events = []
+        latest = events[0] if events and isinstance(events[0], dict) else None
+        self._attr_native_value = (latest.get("time") if latest else None) or "none"
+        self._attr_extra_state_attributes = {
+            **(self._attr_extra_state_attributes or {}),
+            "count": len(events),
+            "events": events,
         }

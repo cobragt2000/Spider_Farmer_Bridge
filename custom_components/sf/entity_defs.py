@@ -482,6 +482,19 @@ OUTLET_MODE_NAMES = [name for name, _ in OUTLET_MODES]
 SUBSTRATE_OPTIONS = ["Clay soil", "Coco coir", "Peat soil"]
 
 
+def build_alarms_entity(device_cfg, slot=None):
+    """Per-controller alarm/event sensor: state = latest alarm time, attribute
+    ``events`` = the decoded alarm-log list. Created on first alarm data."""
+    mac_raw = device_cfg.get("mac", "")
+    return SfDef(
+        platform="sensor", field="alarms", name="Alarms", kind="alarms",
+        mac=_mac(mac_raw), mac_raw=mac_raw,
+        device_name=_device_name(device_cfg), device_model=_device_model(device_cfg),
+        slot=slot, entity_category="diagnostic", icon="mdi:bell-alert",
+        object_id=(f"sf_{slot}_alarms" if slot else None),
+    )
+
+
 def build_air_calibration_entities(device_cfg, slot=None):
     """Editable air-sensor calibration offsets (config-file top-level
     ``calibration`` block {temp,humi,co2,ppfd}). Air-temp is entered in degF
