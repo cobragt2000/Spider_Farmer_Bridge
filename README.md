@@ -248,6 +248,9 @@ globally but has no effect until you add it to a dashboard.
   <img src="https://raw.githubusercontent.com/cobragt2000/spider_farmer_bridge/main/docs/images/19_card_outlets.png" width="245" alt="Spider Farmer card — Outlets tab" />
   <img src="https://raw.githubusercontent.com/cobragt2000/spider_farmer_bridge/main/docs/images/17_card_cali.png" width="245" alt="Spider Farmer card — Calibration tab" />
 </p>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/cobragt2000/spider_farmer_bridge/main/docs/images/24_card_alerts.png" width="245" alt="Spider Farmer card — Alerts tab" />
+</p>
 
 When a panel has two or more soil probes, the Soil Temp / Moisture / EC tiles
 gain a dropdown arrow — click one for a per-probe breakdown of that reading, or

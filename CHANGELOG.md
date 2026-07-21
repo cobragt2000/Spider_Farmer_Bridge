@@ -3,6 +3,14 @@
 All notable changes to the Spider Farmer Bridge integration.
 Each section below is ready to paste into the matching GitHub release.
 
+## 3.19.9
+
+### Fixes
+- **Environment tab overflowed its card on mobile.** The Dead Zone slider couldn't shrink
+  (missing `min-width: 0`), so the whole card was pushed wider than the screen and the title
+  and dead-zone values were cut off. The slider now shrinks to fit like the other tabs.
+  (Bundled card v0.12.1.)
+
 ## 3.19.8
 
 ### Added
@@ -14,6 +22,7 @@ Each section below is ready to paste into the matching GitHub release.
   Each alert has an enable toggle and Max/Min limits; edits stage and write together via the
   new **`sf.set_alarm_settings`** service (read-modify-write; temps entered in °F, stored in
   °C). The tab appears only when the controller has reported its alarm block.
+  (Bundled card v0.12.0.)
 
 ## 3.19.7
 
