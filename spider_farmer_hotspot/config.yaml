@@ -1,0 +1,53 @@
+name: Spider Farmer Hotspot
+slug: spider_farmer_hotspot
+version: "0.2.0"
+description: >-
+  Wi-Fi hotspot + local DNS redirect so Spider Farmer GGS controllers connect
+  straight to the Spider Farmer Bridge integration - no router NAT required.
+url: https://github.com/cobragt2000/spider_farmer_bridge
+arch:
+  - aarch64
+  - armv7
+  - armhf
+  - amd64
+# application = long-running network service. init:false lets our CMD script
+# own the process tree instead of s6-overlay.
+startup: application
+boot: auto
+init: false
+# Share the host network namespace so wlan0 and the proxy port (8883) are the
+# same interfaces HA Core sees.
+host_network: true
+# Needed for the nmcli backend: nmcli talks to the host NetworkManager over the
+# system D-Bus.
+host_dbus: true
+# NET_ADMIN: configure interface / addresses. NET_RAW: hostapd raw sockets.
+# SYS_ADMIN: put some radios into AP mode.
+privileged:
+  - NET_ADMIN
+  - NET_RAW
+  - SYS_ADMIN
+map:
+  - config:rw
+options:
+  hotspot_enabled: true
+  ap_backend: "auto"
+  wifi_interface: "wlan0"
+  ssid: "SF-Bridge"
+  password: "changeme123"
+  channel: 6
+  hotspot_ip: "192.168.10.1"
+  dns_target: ""
+  country_code: "US"
+  unmanage_via_nmcli: false
+schema:
+  hotspot_enabled: bool
+  ap_backend: "list(auto|nmcli|hostapd)"
+  wifi_interface: str
+  ssid: str
+  password: password
+  channel: "int(1,13)"
+  hotspot_ip: str
+  dns_target: "str?"
+  country_code: str
+  unmanage_via_nmcli: bool

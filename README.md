@@ -15,6 +15,14 @@ Spider Farmer cloud: devices keep working in the SF app exactly as before,
 while every status frame passing through becomes live HA state and (optionally)
 HA can inject commands back.
 
+> **📶 Connecting via Wi-Fi (no router config)?** This repo also ships a second,
+> optional component — the **Spider Farmer Hotspot** add-on — which turns your HA
+> host into a Wi-Fi access point the controllers join directly, so you don't need
+> a router that can NAT-redirect traffic. It installs from this same repository
+> via the **Add-on Store** (separately from this HACS integration). If your router
+> already redirects the devices, you can ignore it. See
+> [Connecting the devices](#connecting-the-devices).
+
 ---
 
 ## Screenshots
@@ -158,9 +166,11 @@ disagrees.
 ## Requirements
 
 - Home Assistant 2024.x or newer
-- A router/firewall that can NAT-redirect the GGS devices' outbound
-  `TCP 8883` to your HA host (pfSense, OPNsense, OpenWrt, etc.)
-- The HA host reachable from the devices' VLAN on the configured listen port
+- **One way to get the devices' cloud traffic to the HA host** (see
+  [Connecting the devices](#connecting-the-devices)) — either a router/firewall
+  that can NAT-redirect outbound `TCP 8883` (pfSense, OPNsense, OpenWrt, etc.),
+  **or** the companion **Spider Farmer Hotspot** add-on (no router config)
+- The HA host reachable from the devices on the configured listen port
 
 ## Installation
 
@@ -174,10 +184,41 @@ disagrees.
 Copy `custom_components/sf/` into your `config/custom_components/` and
 restart.
 
-### Network redirect (pfSense example)
+## Connecting the devices
+
+The integration is a local proxy: the GGS controllers must reach it instead of
+the Spider Farmer cloud. Pick **one** of these — you do not need both.
+
+### Option A — Wi-Fi hotspot add-on (no router config)
+
+The **Spider Farmer Hotspot** add-on — shipped from **this same repository** —
+turns your HA host into a small Wi-Fi access point that the controllers join
+directly. It runs a local DNS override so `sf.mqtt.spider-farmer.com` resolves
+to this host's proxy; the integration still relays to the real cloud, so the
+phone app keeps working. Nothing changes on your router.
+
+Requires Home Assistant OS/Supervised, a wired uplink, and a **dedicated 2.4 GHz
+Wi-Fi radio** for the AP (a Pi's built-in Wi-Fi or a USB dongle). On HAOS it
+uses NetworkManager for the AP by default (`ap_backend: auto`) so it coexists
+with the OS's own Wi-Fi handling; a raw-`hostapd` backend is also available.
+
+Install it once you've added this repo to the **Add-on Store** (Settings →
+Add-ons → Add-on Store → ⋮ → Repositories → the same repo URL you added in
+HACS). Set an SSID/password, then pair each controller to the hotspot with the
+Spider Farmer app (hold the controller's mode button ~5 s to enter pairing).
+Full steps in [`spider_farmer_hotspot/DOCS.md`](spider_farmer_hotspot/DOCS.md).
+
+> One repo, two stores: HA installs *integrations* (HACS) and *add-ons*
+> (Supervisor) separately, so you add this repository's URL in both places —
+> but it's the same URL and the same repo.
+
+### Option B — Router NAT redirect (pfSense example)
+
 Port-forward rule on the devices' interface: source = the GGS devices,
 destination `any:8883` → redirect target = HA host, port 8883. Devices
-connect within seconds of the rule going live; no device-side changes.
+connect within seconds of the rule going live; no device-side changes. Needs a
+router that supports NAT/DNS overrides — most consumer routers do not, which is
+what Option A is for.
 
 ## Configuration (gear icon → Configure)
 
@@ -326,7 +367,9 @@ the Spider Farmer GGS protocol this integration speaks:
 - **iceboerg** — spiderfarmer-bridge: https://github.com/iceboerg00/spiderfarmer-bridge
 
 This integration is an independent implementation written from its own packet
-captures.
+captures. The **Spider Farmer Hotspot** add-on's Wi-Fi AP + local DNS-redirect
+approach is adapted from **iceboerg**'s spiderfarmer-bridge, used with
+permission.
 
 Development assistance — integration refactoring, test suite, the bundled
 dashboard cards, and packaging — by **Claude (Anthropic)**.
