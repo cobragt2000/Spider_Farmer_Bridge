@@ -299,6 +299,34 @@ def build_device_entities(
         defs.append(d("sensor", "light_2_brightness", "Light 2 Brightness",
                       unit="%", state_class="measurement", icon="mdi:brightness-percent"))
 
+    # ── Light 1/2 settings (Mode, Go dark, Turn off, PPFD target) ─────────
+    # Write to the panel light block; the tent card's device tile auto-surfaces
+    # these because their entity_ids are sf_<panel>_light_N_*. Temps are °F for
+    # display; the command path converts back to the wire's °C.
+    for lf, ln, cf, blk in (("light_1", "Light 1", "light", "light"),
+                            ("light_2", "Light 2", "light2", "light2")):
+        if blk == "light2" and not caps["hasLight2"]:
+            continue
+        if not want(blk):
+            continue
+        defs += [
+            d("select", f"{lf}_mode", f"{ln} Mode", icon="mdi:cog",
+              options=["Manual", "Time Slot", "PPFD"],
+              command_field=cf, command_subfield="mode"),
+            d("number", f"{lf}_go_dark", f"{ln} Go Dark", unit="°F",
+              icon="mdi:weather-night", num_mode="box",
+              min_value=60, max_value=120,
+              command_field=cf, command_subfield="dim_threshold"),
+            d("number", f"{lf}_turn_off", f"{ln} Turn Off", unit="°F",
+              icon="mdi:lightbulb-off", num_mode="box",
+              min_value=60, max_value=120,
+              command_field=cf, command_subfield="off_threshold"),
+            d("number", f"{lf}_ppfd_target", f"{ln} PPFD Target",
+              unit="µmol", icon="mdi:white-balance-sunny", num_mode="box",
+              min_value=0, max_value=1000, step=10,
+              command_field=cf, command_subfield="ppfd_target"),
+        ]
+
     # ── Climate accessories — per block; strips too (v3.4.0) ─────────────
     if dtype in _FULL_TYPES and want("humidifier"):
         defs += [

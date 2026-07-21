@@ -1253,7 +1253,8 @@ def _process_publish(
             mqtt_client.publish(topic, value, retain=True, qos=0)
     else:
         normalized = normalize_status(
-            session.mac, data, mac=session.mac_raw, fan_cache=session.fan_state
+            session.mac, data, mac=session.mac_raw, fan_cache=session.fan_state,
+            light_cache=session.light_state,
         )
         for topic, value in normalized.items():
             mqtt_client.publish(topic, value, retain=True, qos=0)

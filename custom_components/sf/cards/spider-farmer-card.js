@@ -1,4 +1,4 @@
-/*! spider-farmer-card v0.14.0 | MIT */
+/*! spider-farmer-card v0.15.0 | MIT */
 function t(t,e,s,i){var r,n=arguments.length,a=n<3?e:null===i?i=Object.getOwnPropertyDescriptor(e,s):i;if("object"==typeof Reflect&&"function"==typeof Reflect.decorate)a=Reflect.decorate(t,e,s,i);else for(var o=t.length-1;o>=0;o--)(r=t[o])&&(a=(n<3?r(a):n>3?r(e,s,a):r(e,s))||a);return n>3&&a&&Object.defineProperty(e,s,a),a}"function"==typeof SuppressedError&&SuppressedError;
 /**
  * @license
@@ -208,8 +208,8 @@ const pt={attribute:!0,type:String,converter:$,reflect:!1,hasChanged:x},ht=(t=pt
               <span>${e}</span>
             </div>
             <div class="env-grid">
-              ${this.renderControl(`number.sf_${t}_${s}`,"Day")}
               ${this.renderControl(`number.sf_${t}_${i}`,"Night")}
+              ${this.renderControl(`number.sf_${t}_${s}`,"Day")}
               ${this.renderControl(`number.sf_${t}_${r}`,"Dead Zone")}
             </div>
           </div>`:J)}
@@ -325,8 +325,8 @@ const pt={attribute:!0,type:String,converter:$,reflect:!1,hasChanged:x},ht=(t=pt
             aria-label="Toggle ${s.label} alarm"></button>
         </div>
         <div class="alert-vals">
-          ${r("Max","max")}
           ${"range"===s.kind?r("Min","min"):J}
+          ${r("Max","max")}
         </div>
       </div>`}renderAlertOther(t){const e=t.other||[];if(!e.length)return J;const s=this.accent();return V`
       <div class="section-label">Other Device</div>
@@ -900,4 +900,4 @@ const pt={attribute:!0,type:String,converter:$,reflect:!1,hasChanged:x},ht=(t=pt
     }
     .save { color: #fff; }
     .discard { background: var(--secondary-background-color); color: var(--primary-text-color); }
-  `,t([ut({attribute:!1})],Ft.prototype,"hass",void 0),t([ft()],Ft.prototype,"config",void 0),t([ft()],Ft.prototype,"draft",void 0),customElements.get("spider-farmer-card")||customElements.define("spider-farmer-card",Rt),customElements.get("spider-farmer-card-editor")||customElements.define("spider-farmer-card-editor",Ut),customElements.get("spider-light-card")||customElements.define("spider-light-card",Ft),window.customCards=window.customCards||[],window.customCards.push({type:"spider-farmer-card",name:"Spider Farmer Card",description:"Tent overview + config for the Spider Farmer Bridge integration",preview:!0,documentationURL:"https://github.com/cobragt2000/spider_farmer_bridge"}),window.customCards.push({type:"spider-light-card",name:"Spider Light Card",description:"Brightness dial, mode, and schedule for a Spider Farmer SE-series light",preview:!0,documentationURL:"https://github.com/cobragt2000/spider_farmer_bridge"}),console.info("%c SPIDER-FARMER-CARD %c v0.14.0 ","color:#fff;background:#ff7a1a;border-radius:3px 0 0 3px;padding:2px 4px","color:#ff7a1a;background:#222;border-radius:0 3px 3px 0;padding:2px 4px");export{Rt as SpiderFarmerCard,Ut as SpiderFarmerCardEditor,Ft as SpiderLightCard};
+  `,t([ut({attribute:!1})],Ft.prototype,"hass",void 0),t([ft()],Ft.prototype,"config",void 0),t([ft()],Ft.prototype,"draft",void 0),customElements.get("spider-farmer-card")||customElements.define("spider-farmer-card",Rt),customElements.get("spider-farmer-card-editor")||customElements.define("spider-farmer-card-editor",Ut),customElements.get("spider-light-card")||customElements.define("spider-light-card",Ft),window.customCards=window.customCards||[],window.customCards.push({type:"spider-farmer-card",name:"Spider Farmer Card",description:"Tent overview + config for the Spider Farmer Bridge integration",preview:!0,documentationURL:"https://github.com/cobragt2000/spider_farmer_bridge"}),window.customCards.push({type:"spider-light-card",name:"Spider Light Card",description:"Brightness dial, mode, and schedule for a Spider Farmer SE-series light",preview:!0,documentationURL:"https://github.com/cobragt2000/spider_farmer_bridge"}),console.info("%c SPIDER-FARMER-CARD %c v0.15.0 ","color:#fff;background:#ff7a1a;border-radius:3px 0 0 3px;padding:2px 4px","color:#ff7a1a;background:#222;border-radius:0 3px 3px 0;padding:2px 4px");export{Rt as SpiderFarmerCard,Ut as SpiderFarmerCardEditor,Ft as SpiderLightCard};

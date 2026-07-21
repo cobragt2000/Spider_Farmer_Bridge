@@ -75,11 +75,14 @@ _CLIMATE_LEVEL_RANGE = {
 
 # Light setting subfields handled by the light-config write path.
 _LIGHT_SUBFIELDS = {
+    "mode",
     "dim_threshold", "off_threshold",
     "schedule_brightness", "schedule_start", "schedule_end", "fade_minutes",
     "ppfd_target", "ppfd_start", "ppfd_end", "ppfd_fade_minutes",
     "ppfd_min", "ppfd_max",
 }
+# Light Mode select label -> modeType (panel Light 1/2). 12 == PPFD.
+_LIGHT_MODE_LABEL_TO_TYPE = {"Manual": 0, "Time Slot": 1, "PPFD": 12}
 # Fan/blower setting subfields handled by the fan-config write path.
 _FAN_SUBFIELDS = {
     "preset_mode", "env_submode",
@@ -560,10 +563,15 @@ def _cmd_light_config(mac, uid, field, value, subfield, state, light_state):
         return pp[0]
 
     try:
-        if subfield == "dim_threshold":
-            block["darkTemp"] = float(value)
-        elif subfield == "off_threshold":
-            block["offTemp"] = float(value)
+        if subfield == "mode":
+            mt = _LIGHT_MODE_LABEL_TO_TYPE.get(str(value), 0)
+            block["modeType"] = mt
+            if mt != 0:                       # remember the last non-manual mode
+                block["lastAutoModeType"] = mt
+        elif subfield == "dim_threshold":     # "Go dark" temp, wire is °C
+            block["darkTemp"] = _f_to_c(value)
+        elif subfield == "off_threshold":     # "Turn off" temp, wire is °C
+            block["offTemp"] = _f_to_c(value)
         elif subfield == "schedule_brightness":
             lv = _light_pct(value)
             if lv is None:

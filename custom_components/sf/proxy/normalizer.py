@@ -233,6 +233,7 @@ def normalize_status(
     data: Dict[str, Any],
     mac: str = "",
     fan_cache: Optional[Dict[str, dict]] = None,
+    light_cache: Optional[Dict[str, dict]] = None,
     **kwargs,   # tolerate extra keyword args from callers
 ) -> Dict[str, str]:
     """Decode one live status frame into topic -> value pairs."""
@@ -261,7 +262,8 @@ def normalize_status(
 
     _decode_air(out, e, d.get("sensor", {}))
     for module, num in (("light", 1), ("light2", 2)):
-        _decode_light(out, e, num, d.get(module, {}))
+        _decode_light(out, e, num, d.get(module, {}),
+                      (light_cache or {}).get(module, {}))
     _decode_blower(out, e, d.get("blower", {}))
     _decode_fan(out, e, d.get("fan", {}), (fan_cache or {}).get("fan", {}))
     _decode_outlets(out, e, d.get("outlet", {}))
@@ -279,16 +281,44 @@ def _decode_air(out, e, sensor):
             out[f"ggs/ha/{e}/{field}/state"] = str(sensor[src])
 
 
-def _decode_light(out, e, num, block):
-    if not block:
+# Panel light modeType -> label (12 == PPFD).
+_LIGHT_MODE_MAP = {0: "Manual", 1: "Time Slot", 12: "PPFD"}
+
+
+def _decode_light(out, e, num, block, cache=None):
+    cache = cache or {}
+    if not block and not cache:
         return
     is_on = _on(_num(block, "mOnOff", "on"))
     level = _num(block, "mLevel", "level")
-    out[f"ggs/ha/{e}/light_{num}/state"] = json.dumps(
-        {"state": "ON" if is_on else "OFF", "brightness": level}
-    )
-    # Brightness sensor reads 0 while the light is off.
-    out[f"ggs/ha/{e}/light_{num}_brightness/state"] = str(level if is_on else 0)
+    if block:
+        out[f"ggs/ha/{e}/light_{num}/state"] = json.dumps(
+            {"state": "ON" if is_on else "OFF", "brightness": level}
+        )
+        # Brightness sensor reads 0 while the light is off.
+        out[f"ggs/ha/{e}/light_{num}_brightness/state"] = str(level if is_on else 0)
+
+    # Config-only extras (Mode, Go dark, Turn off, PPFD target). These arrive in
+    # config responses, so fall back to the cached block to stay off "unknown".
+    def val(key):
+        return block.get(key, cache.get(key))
+
+    mt = val("modeType")
+    if mt is not None:
+        out[f"ggs/ha/{e}/light_{num}_mode/state"] = _LIGHT_MODE_MAP.get(
+            int(mt), f"Mode {mt}"
+        )
+    dark = val("darkTemp")
+    if dark is not None:
+        out[f"ggs/ha/{e}/light_{num}_go_dark/state"] = str(round(float(dark) * 9 / 5 + 32))
+    off = val("offTemp")
+    if off is not None:
+        out[f"ggs/ha/{e}/light_{num}_turn_off/state"] = str(round(float(off) * 9 / 5 + 32))
+    pp = val("ppfdPeriod")
+    if isinstance(pp, list) and pp:
+        out[f"ggs/ha/{e}/light_{num}_ppfd_target/state"] = str(
+            int(pp[0].get("brightness", 0) or 0)
+        )
 
 
 def _decode_blower(out, e, block):

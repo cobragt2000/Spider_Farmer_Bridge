@@ -3,6 +3,22 @@
 All notable changes to the Spider Farmer Bridge integration.
 Each section below is ready to paste into the matching GitHub release.
 
+## 3.19.12
+
+### Added
+- **Light settings (Light 1 / Light 2).** Each panel light now exposes the SF app's
+  advanced options as entities, which appear inline when you expand the light's tile on
+  the Overview tab: **Mode** (Manual / Time Slot / PPFD), **Go dark** and **Turn off**
+  temperature-overshoot thresholds (°F), and **PPFD Target** (µmol). Wire format confirmed
+  from device logs (`keyPath ["device","light"]`: `modeType` 0/1/12, `darkTemp`/`offTemp`
+  in °C, `ppfdPeriod[0].brightness` = target PPFD); temps are shown in °F and converted
+  back on write.
+
+### Changed
+- **Environment tab** target columns reordered to **Night, then Day** (was Day, Night).
+- **Alerts tab** threshold fields reordered to **Min, then Max** (was Max, Min).
+- (Bundled card v0.15.0.)
+
 ## 3.19.11
 
 ### Changed
