@@ -4,6 +4,22 @@ All notable changes to the **Spider Farmer Hotspot** add-on. The Supervisor
 offers an update whenever the `version` in `config.yaml` increases; the notes
 below are shown on the add-on's Changelog tab.
 
+## 0.3.4
+
+- **Build:** removed the deprecated `build.yaml`. The base-image `LABEL` moved
+  into the Dockerfile and `ARG BUILD_FROM` now has a default, which silences the
+  Supervisor's "build.yaml is deprecated" and Docker's `InvalidDefaultArgInFrom`
+  warnings. The Supervisor still injects the correct per-architecture base image
+  at build time (archs are declared in `config.yaml`). No runtime change.
+
+## 0.3.3
+
+- **Fix (build):** removed the `rfkill` apk package - it does not exist in the
+  Alpine 3.19 base and broke the image build. `/dev/rfkill` isn't exposed to the
+  add-on container anyway, so the tool couldn't have run; the hostapd fallback
+  still sets the regulatory domain via `iw reg set`, and the `rfkill unblock`
+  call remains guarded so it's simply skipped when the tool is absent.
+
 ## 0.3.2
 
 - Log the running add-on version at startup (`... add-on v0.3.2 starting`) to

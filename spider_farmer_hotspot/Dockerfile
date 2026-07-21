@@ -1,5 +1,12 @@
-ARG BUILD_FROM
+# The Supervisor injects the correct per-architecture base image via the
+# BUILD_FROM build-arg (archs are declared in config.yaml). The default below
+# is only a fallback for a plain `docker build` and silences Docker's
+# InvalidDefaultArgInFrom warning.
+ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.19
 FROM ${BUILD_FROM}
+
+LABEL \
+  org.opencontainers.image.source="https://github.com/cobragt2000/spider_farmer_bridge"
 
 # hostapd            - AP backend when NetworkManager isn't in play
 # dnsmasq            - DHCP for hotspot clients + the local DNS override
@@ -11,7 +18,6 @@ RUN apk add --no-cache \
     dnsmasq \
     networkmanager-cli \
     iw \
-    rfkill \
     iproute2 \
     wireless-tools \
     jq
