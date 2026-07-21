@@ -4,6 +4,20 @@ All notable changes to the **Spider Farmer Hotspot** add-on. The Supervisor
 offers an update whenever the `version` in `config.yaml` increases; the notes
 below are shown on the add-on's Changelog tab.
 
+## 0.3.5
+
+- **Fix (root cause of AP failures):** both backends were failing because the
+  radio sat in the world ("00") regulatory domain, where 2.4GHz AP transmission
+  is forbidden - hostapd reported "channel is disabled" and NetworkManager timed
+  out as "802.1X supplicant took too long to authenticate". The add-on now sets
+  the regulatory domain (`iw reg set <country_code>`) before starting either
+  backend, logs the domain before/after, flags self-managed radios, and prints a
+  clear warning (with the exact HA setting to change) if the domain is still
+  world/unset. Added the `wireless-regdb` package.
+- **Note:** the definitive fix is host-side - set your country under
+  **Settings > System > General > Country** in Home Assistant, which sets the
+  system-wide Wi-Fi regulatory domain.
+
 ## 0.3.4
 
 - **Build:** removed the deprecated `build.yaml`. The base-image `LABEL` moved

@@ -12,6 +12,7 @@ LABEL \
 # dnsmasq            - DHCP for hotspot clients + the local DNS override
 # networkmanager-cli - nmcli, the AP backend that coexists with HAOS's NM
 # iw / iproute2 / wireless-tools - bring the radio up and into AP mode
+# wireless-regdb     - regulatory database (channel/country rules)
 # jq                 - read /data/options.json
 RUN apk add --no-cache \
     hostapd \
@@ -20,6 +21,7 @@ RUN apk add --no-cache \
     iw \
     iproute2 \
     wireless-tools \
+    wireless-regdb \
     jq
 
 COPY run.sh /run.sh

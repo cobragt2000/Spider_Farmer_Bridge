@@ -13,7 +13,7 @@
 #   auto    - nmcli if a running NetworkManager is reachable, else hostapd.
 set -uo pipefail
 
-ADDON_VERSION="0.3.4"
+ADDON_VERSION="0.3.5"
 OPTIONS=/data/options.json
 NM_CON="SF-Bridge-Hotspot"
 DNSMASQ_PID=""
@@ -123,6 +123,36 @@ DHCP_START="${PREFIX}.10"
 DHCP_END="${PREFIX}.100"
 NETMASK="255.255.255.0"
 
+# --- regulatory domain --------------------------------------------------
+# 2.4GHz AP operation is forbidden in the world ("00") regulatory domain, which
+# is why hostapd reports "channel is disabled" and NetworkManager times out with
+# "802.1X supplicant took too long". Set a real country domain and report what
+# the kernel actually applied so the cause is visible.
+setup_regdomain() {
+  local before after phy
+  before=$(iw reg get 2>/dev/null | awk '/^country/{print $2; exit}')
+  log "regulatory domain (before): ${before:-unknown}"
+  iw reg set "${COUNTRY}" 2>/dev/null || true
+  sleep 1
+  after=$(iw reg get 2>/dev/null | awk '/^country/{print $2; exit}')
+  log "regulatory domain (after set ${COUNTRY}): ${after:-unknown}"
+
+  phy=$(iw dev "${IFACE}" info 2>/dev/null | sed -n 's/.*wiphy \([0-9]\+\).*/\1/p')
+  if [ -n "${phy}" ] && iw phy "phy${phy}" info 2>/dev/null | grep -qi "self-managed"; then
+    log "NOTE: ${IFACE} radio is self-managed for regulatory - 'iw reg set' may not"
+    log "affect it; the driver decides which channels are allowed."
+  fi
+
+  case "${after}" in
+    00*|""|unknown)
+      log "WARNING: still in the world/unset regulatory domain, so 2.4GHz AP"
+      log "channels remain DISABLED. Fix this on the HOST: set your country under"
+      log "Settings > System > General > Country in Home Assistant (that sets the"
+      log "Wi-Fi regulatory domain for the whole system), then restart this add-on."
+      ;;
+  esac
+}
+
 # --- pick the backend ----------------------------------------------------
 nm_running() {
   command -v nmcli >/dev/null 2>&1 && \
@@ -140,6 +170,9 @@ fi
 
 log "backend=${BACKEND} interface=${IFACE} ssid='${SSID}' channel=${CHANNEL} ip=${HOTSPOT_IP}"
 log "DNS: sf.mqtt.spider-farmer.com -> ${DNS_TARGET}"
+
+setup_regdomain
+
 
 # --- dnsmasq config (used by BOTH backends) ------------------------------
 DNSMASQ_CONF=/tmp/dnsmasq.conf
@@ -230,7 +263,6 @@ start_hostapd() {
   # Best effort: clear any rfkill soft-block and set the regulatory domain so
   # the chosen channel is permitted (fixes "channel is disabled").
   command -v rfkill >/dev/null 2>&1 && rfkill unblock all 2>/dev/null || true
-  iw reg set "${COUNTRY}" 2>/dev/null || true
 
   HOSTAPD_CONF=/tmp/hostapd.conf
   cat > "${HOSTAPD_CONF}" <<HAPD
