@@ -3,6 +3,22 @@
 All notable changes to the Spider Farmer Bridge integration.
 Each section below is ready to paste into the matching GitHub release.
 
+## 3.19.14
+
+### Added
+- **Mode-aware light tile.** Expanding a Light tile now shows only the controls that apply
+  to the selected Mode, mirroring the SF app:
+  - **Manual** — Power, Brightness, Current PPFD.
+  - **Time Slot** — current readout, **Light duration** (derived, shown above the period),
+    **Lighting period** (start–stop), Target Brightness, Simulate Sunrise/Sunset (fade),
+    Go dark, Turn off.
+  - **PPFD** — current readout, **DLI + Light duration**, Lighting period, **Target PPFD**
+    with the **current PPFD shown alongside it**, Simulate, Go dark, Turn off.
+  - PPFD Target no longer appears under Manual/Time Slot.
+- New light entities backing the above: schedule start/stop, schedule brightness, fade, and
+  the PPFD start/stop/fade (decoded from `timePeriod` / `ppfdPeriod`; writes already
+  supported). (Bundled card v0.16.0.)
+
 ## 3.19.13
 
 ### Fixed

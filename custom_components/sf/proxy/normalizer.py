@@ -314,11 +314,22 @@ def _decode_light(out, e, num, block, cache=None):
     off = val("offTemp")
     if off is not None:
         out[f"ggs/ha/{e}/light_{num}_turn_off/state"] = str(round(float(off) * 9 / 5 + 32))
+    # Time Slot schedule (timePeriod[0]) — start/stop, target brightness, fade.
+    tp = val("timePeriod")
+    if isinstance(tp, list) and tp:
+        t0 = tp[0]
+        out[f"ggs/ha/{e}/light_{num}_schedule_start/state"] = _sec_to_hhmm(t0.get("startTime", 0))
+        out[f"ggs/ha/{e}/light_{num}_schedule_stop/state"] = _sec_to_hhmm(t0.get("endTime", 0))
+        out[f"ggs/ha/{e}/light_{num}_schedule_brightness/state"] = str(int(t0.get("brightness", 0) or 0))
+        out[f"ggs/ha/{e}/light_{num}_fade/state"] = str(int(t0.get("fadeTime", 0) or 0) // 60)
+    # PPFD schedule (ppfdPeriod[0]) — start/stop, target PPFD, fade.
     pp = val("ppfdPeriod")
     if isinstance(pp, list) and pp:
-        out[f"ggs/ha/{e}/light_{num}_ppfd_target/state"] = str(
-            int(pp[0].get("brightness", 0) or 0)
-        )
+        p0 = pp[0]
+        out[f"ggs/ha/{e}/light_{num}_ppfd_target/state"] = str(int(p0.get("brightness", 0) or 0))
+        out[f"ggs/ha/{e}/light_{num}_ppfd_start/state"] = _sec_to_hhmm(p0.get("startTime", 0))
+        out[f"ggs/ha/{e}/light_{num}_ppfd_stop/state"] = _sec_to_hhmm(p0.get("endTime", 0))
+        out[f"ggs/ha/{e}/light_{num}_ppfd_fade/state"] = str(int(p0.get("fadeTime", 0) or 0) // 60)
 
 
 def _decode_blower(out, e, block):
