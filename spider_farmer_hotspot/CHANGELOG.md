@@ -4,6 +4,13 @@ All notable changes to the **Spider Farmer Hotspot** add-on. The Supervisor
 offers an update whenever the `version` in `config.yaml` increases; the notes
 below are shown on the add-on's Changelog tab.
 
+## 0.3.6
+
+- Version bump to ensure the Supervisor detects the update. Includes all of the
+  0.3.5 regulatory-domain handling. No other change. **When pushing, confirm
+  `config.yaml` on GitHub shows the new `version:` - the Supervisor reads the
+  version from that file only.**
+
 ## 0.3.5
 
 - **Fix (root cause of AP failures):** both backends were failing because the

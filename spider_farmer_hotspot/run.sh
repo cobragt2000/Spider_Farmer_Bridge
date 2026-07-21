@@ -13,7 +13,7 @@
 #   auto    - nmcli if a running NetworkManager is reachable, else hostapd.
 set -uo pipefail
 
-ADDON_VERSION="0.3.5"
+ADDON_VERSION="0.3.6"
 OPTIONS=/data/options.json
 NM_CON="SF-Bridge-Hotspot"
 DNSMASQ_PID=""
