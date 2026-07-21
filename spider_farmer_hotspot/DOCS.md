@@ -112,6 +112,14 @@ be replaced. Reliable, inexpensive AP-capable USB chipsets include **MediaTek
 MT7601U / MT76x2U** and **Ralink RT5370 (rt2800usb)** - these "just work" as
 HAOS access points.
 
+**Raspberry Pi built-in Wi-Fi is supported.** The Pi 3B+/4/5 (and Pi 3B, 2.4GHz
+only) use Broadcom radios via the `brcmfmac` driver, which does AP mode well and
+is a common HAOS hotspot. On a Pi, keep `ap_backend` on `auto` (the default):
+NetworkManager manages the built-in radio on Home Assistant OS, so letting NM
+create the AP (the nmcli backend) is the smoothest path. No extra configuration
+is needed beyond setting your country (Settings > System > General) and an
+SSID/password here.
+
 ## First-time pairing
 
 1. Install and start the add-on; confirm the `SF-Bridge` network appears.

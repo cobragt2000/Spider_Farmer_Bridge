@@ -4,6 +4,15 @@ All notable changes to the **Spider Farmer Hotspot** add-on. The Supervisor
 offers an update whenever the `version` in `config.yaml` increases; the notes
 below are shown on the add-on's Changelog tab.
 
+## 0.3.9
+
+- **Raspberry Pi / brcmfmac support:** disable Wi-Fi powersave on the AP
+  connection in the nmcli backend, which improves access-point stability on
+  Broadcom radios (Pi 3B+/4/5 built-in Wi-Fi). Applied best-effort so it can
+  never break the connection.
+- Docs: documented that the Pi's built-in Wi-Fi is supported and that `auto`
+  (nmcli) is the recommended backend there.
+
 ## 0.3.8
 
 - **New `security` option** (`wpa2` / `wpa` / `open`) for both backends. This is

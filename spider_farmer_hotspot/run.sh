@@ -13,7 +13,7 @@
 #   auto    - nmcli if a running NetworkManager is reachable, else hostapd.
 set -uo pipefail
 
-ADDON_VERSION="0.3.8"
+ADDON_VERSION="0.3.9"
 OPTIONS=/data/options.json
 NM_CON="SF-Bridge-Hotspot"
 DNSMASQ_PID=""
@@ -269,6 +269,10 @@ start_nmcli() {
     log "ERROR creating NM AP connection: ${out}"
     return 1
   fi
+
+  # Disable Wi-Fi powersave on the AP interface (brcmfmac / Raspberry Pi radios
+  # are more stable as an AP with it off). Safe/best-effort - never fatal.
+  nmcli con modify "${NM_CON}" 802-11-wireless.powersave 2 2>/dev/null || true
 
   if ! out=$(nmcli con up "${NM_CON}" 2>&1); then
     log "ERROR bringing up NM AP connection: ${out}"
