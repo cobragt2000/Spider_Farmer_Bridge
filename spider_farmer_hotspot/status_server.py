@@ -54,12 +54,16 @@ def proxy_listening(port=8883):
 def page():
     o = opts()
     dns_target = o.get("dns_target") or o.get("hotspot_ip", "")
+    proxy_port = int(o.get("proxy_port", 8883) or 8883)
     rows = leases()
-    up = proxy_listening()
+    up = proxy_listening(proxy_port)
     proxy_html = (
-        "<span style='color:#3fb950'>listening ✓</span>" if up
-        else "<span style='color:#f85149'>NOT listening ✗ — is the Spider "
-             "Farmer Bridge integration running?</span>"
+        f"<span style='color:#3fb950'>:{proxy_port} listening ✓</span>" if up
+        else f"<span style='color:#f85149'>:{proxy_port} NOT listening ✗ — is the "
+             "Spider Farmer Bridge integration running?</span>"
+    )
+    redirect_html = (
+        f" (device :8883 &rarr; :{proxy_port})" if proxy_port != 8883 else ""
     )
     trs = ""
     for mac, ip, name, exp in rows:
@@ -93,8 +97,8 @@ th{{color:#9aa;font-weight:400}}
        <span class=k>AP IP:</span> {e(o.get('hotspot_ip',''))} &nbsp;
        <span class=k>Interface:</span> {e(o.get('wifi_interface',''))}</div>
   <div style='margin-top:6px'><span class=k>DNS redirect:</span>
-       sf.mqtt.spider-farmer.com &rarr; {e(dns_target)}:8883</div>
-  <div style='margin-top:6px'><span class=k>Proxy (:8883):</span> {proxy_html}</div>
+       sf.mqtt.spider-farmer.com &rarr; {e(dns_target)}:8883{redirect_html}</div>
+  <div style='margin-top:6px'><span class=k>Proxy:</span> {proxy_html}</div>
 </div>
 <div class=card>
   <h3>Connected clients ({len(rows)})</h3>

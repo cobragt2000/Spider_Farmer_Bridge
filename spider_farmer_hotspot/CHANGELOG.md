@@ -4,6 +4,16 @@ All notable changes to the **Spider Farmer Hotspot** add-on. The Supervisor
 offers an update whenever the `version` in `config.yaml` increases; the notes
 below are shown on the add-on's Changelog tab.
 
+## 0.5.0
+
+- **`proxy_port` option + port redirect.** Devices always connect to the cloud on
+  tcp/8883, but the integration's proxy may listen elsewhere (e.g. :8000). Set
+  `proxy_port` to the integration's listen port and the add-on redirects the
+  hotspot's inbound 8883 to it (iptables), so devices actually reach the proxy —
+  the job the router did in the NAT method. The startup health check and the
+  dashboard now reflect the configured port and show the 8883 -> proxy_port
+  redirect.
+
 ## 0.4.0
 
 - **Status dashboard (HA ingress).** The add-on now has a Web UI (Open in the

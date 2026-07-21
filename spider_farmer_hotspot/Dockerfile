@@ -20,6 +20,7 @@ RUN apk add --no-cache \
     networkmanager-cli \
     iw \
     iproute2 \
+    iptables \
     wireless-tools \
     wireless-regdb \
     jq \

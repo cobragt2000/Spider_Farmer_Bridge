@@ -13,12 +13,13 @@
 #   auto    - nmcli if a running NetworkManager is reachable, else hostapd.
 set -uo pipefail
 
-ADDON_VERSION="0.4.0"
+ADDON_VERSION="0.5.0"
 OPTIONS=/data/options.json
 NM_CON="SF-Bridge-Hotspot"
 DNSMASQ_PID=""
 HOSTAPD_PID=""
 STATUS_PID=""
+PORT_RULE_ADDED=""
 BACKEND=""
 CHOSEN_IFACE=""
 
@@ -40,6 +41,8 @@ COUNTRY=$(get '.country_code')
 UNMANAGE=$(get '.unmanage_via_nmcli')
 SECURITY=$(get '.security')
 DNS_LOGGING=$(get '.dns_logging')
+PROXY_PORT=$(get '.proxy_port')
+[ -z "${PROXY_PORT}" ] || [ "${PROXY_PORT}" = "null" ] && PROXY_PORT=8883
 
 if [ -z "${DNS_TARGET}" ] || [ "${DNS_TARGET}" = "null" ]; then
   DNS_TARGET="${HOTSPOT_IP}"
@@ -221,6 +224,8 @@ cleanup() {
   log "Shutting down hotspot..."
   [ -n "${DNSMASQ_PID}" ] && kill "${DNSMASQ_PID}" 2>/dev/null || true
   [ -n "${STATUS_PID}" ] && kill "${STATUS_PID}" 2>/dev/null || true
+  [ -n "${PORT_RULE_ADDED}" ] && iptables -t nat -D PREROUTING -i "${IFACE}" \
+    -p tcp --dport 8883 -j REDIRECT --to-ports "${PROXY_PORT}" 2>/dev/null || true
   [ -n "${HOSTAPD_PID}" ] && kill "${HOSTAPD_PID}" 2>/dev/null || true
   if [ "${BACKEND}" = "nmcli" ]; then
     nmcli con down "${NM_CON}" 2>/dev/null || true
@@ -363,15 +368,30 @@ else
   start_hostapd || { log "hostapd backend failed."; exec sleep infinity; }
 fi
 
-# Health check: is the integration's proxy actually listening on :8883? A
+# Devices always dial the cloud on tcp/8883. If the integration's proxy listens
+# on a different port (proxy_port), redirect the hotspot's inbound 8883 to it so
+# the device actually reaches the proxy. (Was handled by the router in the NAT
+# method; the host does it here.)
+if [ "${PROXY_PORT}" != "8883" ]; then
+  if command -v iptables >/dev/null 2>&1 && iptables -t nat -A PREROUTING \
+        -i "${IFACE}" -p tcp --dport 8883 -j REDIRECT --to-ports "${PROXY_PORT}" 2>/dev/null; then
+    PORT_RULE_ADDED=1
+    log "port redirect: ${IFACE} tcp/8883 -> local :${PROXY_PORT}"
+  else
+    log "WARNING: could not add the 8883 -> ${PROXY_PORT} redirect. Devices expect"
+    log ":8883; without it they can't reach a proxy on :${PROXY_PORT}."
+  fi
+fi
+
+# Health check: is the integration's proxy actually listening on proxy_port? A
 # device can join the hotspot and resolve the redirect, yet still be offline if
-# nothing answers at the DNS target.
-if command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -q ':8883 '; then
-  log "proxy port :8883 is listening (Spider Farmer Bridge integration up)."
+# nothing answers.
+if command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -q ":${PROXY_PORT} "; then
+  log "proxy port :${PROXY_PORT} is listening (Spider Farmer Bridge integration up)."
 else
-  log "WARNING: nothing is listening on :8883. Devices will join the hotspot but"
-  log "stay OFFLINE until the Spider Farmer Bridge integration is running and its"
-  log "proxy is reachable at ${DNS_TARGET}:8883 (the DNS redirect target)."
+  log "WARNING: nothing is listening on :${PROXY_PORT}. Devices will join the hotspot"
+  log "but stay OFFLINE until the Spider Farmer Bridge integration is running and its"
+  log "proxy is reachable (DNS target ${DNS_TARGET}, device port 8883 -> :${PROXY_PORT})."
 fi
 
 # Status dashboard (HA ingress): connected clients, redirect + proxy health.
