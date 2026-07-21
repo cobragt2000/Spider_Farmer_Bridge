@@ -13,7 +13,7 @@
 #   auto    - nmcli if a running NetworkManager is reachable, else hostapd.
 set -uo pipefail
 
-ADDON_VERSION="0.3.7"
+ADDON_VERSION="0.3.8"
 OPTIONS=/data/options.json
 NM_CON="SF-Bridge-Hotspot"
 DNSMASQ_PID=""
@@ -37,6 +37,7 @@ HOTSPOT_IP=$(get '.hotspot_ip')
 DNS_TARGET=$(get '.dns_target')
 COUNTRY=$(get '.country_code')
 UNMANAGE=$(get '.unmanage_via_nmcli')
+SECURITY=$(get '.security')
 
 if [ -z "${DNS_TARGET}" ] || [ "${DNS_TARGET}" = "null" ]; then
   DNS_TARGET="${HOTSPOT_IP}"
@@ -113,8 +114,8 @@ fi
 if [ "${PASSWORD}" = "changeme123" ]; then
   log "WARNING: still using the default password 'changeme123' - change it."
 fi
-if [ "${#PASSWORD}" -lt 8 ]; then
-  log "ERROR: WPA2 password must be at least 8 characters."
+if [ "${SECURITY}" != "open" ] && [ "${#PASSWORD}" -lt 8 ]; then
+  log "ERROR: WPA/WPA2 password must be at least 8 characters."
   exec sleep infinity
 fi
 
@@ -186,7 +187,7 @@ if [ "${BACKEND}" = "nmcli" ] && ! nm_running; then
   BACKEND="hostapd"
 fi
 
-log "backend=${BACKEND} interface=${IFACE} ssid='${SSID}' channel=${CHANNEL} ip=${HOTSPOT_IP}"
+log "backend=${BACKEND} interface=${IFACE} ssid='${SSID}' channel=${CHANNEL} ip=${HOTSPOT_IP} security=${SECURITY}"
 log "DNS: sf.mqtt.spider-farmer.com -> ${DNS_TARGET}"
 
 setup_regdomain
@@ -248,13 +249,20 @@ start_nmcli() {
   # that is a system-wide regulatory setting, not an NM connection property,
   # and including it silently poisons the whole command.
   local out
+  local sec_args=()
+  case "${SECURITY}" in
+    open) sec_args=() ;;
+    wpa)  sec_args=(wifi-sec.key-mgmt wpa-psk wifi-sec.psk "${PASSWORD}" \
+                    wifi-sec.proto wpa wifi-sec.pairwise tkip wifi-sec.group tkip) ;;
+    *)    sec_args=(wifi-sec.key-mgmt wpa-psk wifi-sec.psk "${PASSWORD}" \
+                    wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp) ;;
+  esac
   if ! out=$(nmcli con add type wifi ifname "${IFACE}" con-name "${NM_CON}" \
         autoconnect yes ssid "${SSID}" \
         802-11-wireless.mode ap \
         802-11-wireless.band bg \
         802-11-wireless.channel "${CHANNEL}" \
-        wifi-sec.key-mgmt wpa-psk \
-        wifi-sec.psk "${PASSWORD}" \
+        ${sec_args[@]+"${sec_args[@]}"} \
         ipv4.method manual \
         ipv4.addresses "${HOTSPOT_IP}/24" \
         ipv6.method ignore 2>&1); then
@@ -292,11 +300,26 @@ ieee80211d=1
 hw_mode=g
 channel=${CHANNEL}
 auth_algs=1
+HAPD
+  case "${SECURITY}" in
+    open) : ;;
+    wpa)
+      cat >> "${HOSTAPD_CONF}" <<HSEC
+wpa=1
+wpa_passphrase=${PASSWORD}
+wpa_key_mgmt=WPA-PSK
+wpa_pairwise=TKIP
+HSEC
+      ;;
+    *)
+      cat >> "${HOSTAPD_CONF}" <<HSEC
 wpa=2
 wpa_passphrase=${PASSWORD}
 wpa_key_mgmt=WPA-PSK
 rsn_pairwise=CCMP
-HAPD
+HSEC
+      ;;
+  esac
   log "Configuring ${IFACE}..."
   ip link set "${IFACE}" down || true
   pkill -f "wpa_supplicant.*${IFACE}" 2>/dev/null || true

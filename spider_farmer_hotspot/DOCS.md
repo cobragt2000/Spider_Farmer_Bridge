@@ -86,11 +86,31 @@ handled by `auto` (the log shows the exact name to type if you need to override)
 | `wifi_interface` | `auto` | Radio dedicated to the AP. `auto` detects it; or pick `wlan0`/`wlan1`/`wlan2`. See below. |
 | `ssid` | `SF-Bridge` | Hotspot network name. |
 | `password` | `changeme123` | WPA2 password, min 8 chars. **Change this.** |
+| `security` | `wpa2` | `wpa2` (CCMP), `wpa` (TKIP, for old radios), or `open` (no password - testing only). |
 | `channel` | `6` | 2.4 GHz channel (1-13). |
 | `hotspot_ip` | `192.168.10.1` | The host's address on the hotspot; also the gateway/DNS handed to clients. Pick a subnet that does NOT overlap your LAN. |
 | `dns_target` | *(blank)* | Where `sf.mqtt.spider-farmer.com` resolves for hotspot clients. Blank = `hotspot_ip` (the local proxy). |
 | `country_code` | `US` | Regulatory domain for the radio. |
 | `unmanage_via_nmcli` | `false` | hostapd backend only: run `nmcli dev set <iface> managed no` on start so hostapd can claim the radio. |
+
+## Wi-Fi adapter compatibility
+
+Running an access point needs a radio whose driver supports **AP (master) mode
+with WPA2**. Not every Wi-Fi adapter does - many old or cheap USB dongles can
+associate as a client but fail to run a secure AP.
+
+Symptoms of an incompatible adapter in the log:
+
+- `key not allowed` / `Failed to set beacon parameters` - the driver can't set
+  the WPA2/CCMP key in AP mode (common on old Ralink `rt73usb`/`rt2500usb`).
+- `channel is disabled` that persists even with the correct country set - a
+  self-managed or driver-locked radio.
+
+If you hit these, try the `security` option (`wpa` or, for a quick hardware
+test, `open`); if only `open` beacons, the adapter can't do WPA2-AP and should
+be replaced. Reliable, inexpensive AP-capable USB chipsets include **MediaTek
+MT7601U / MT76x2U** and **Ralink RT5370 (rt2800usb)** - these "just work" as
+HAOS access points.
 
 ## First-time pairing
 

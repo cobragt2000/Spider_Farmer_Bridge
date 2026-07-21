@@ -4,6 +4,17 @@ All notable changes to the **Spider Farmer Hotspot** add-on. The Supervisor
 offers an update whenever the `version` in `config.yaml` increases; the notes
 below are shown on the add-on's Changelog tab.
 
+## 0.3.8
+
+- **New `security` option** (`wpa2` / `wpa` / `open`) for both backends. This is
+  a workaround for radios whose driver can't set a WPA2/CCMP key in AP mode
+  (e.g. old Ralink `rt73usb`, which reaches `AP-ENABLED` then fails with
+  `key not allowed` / `Failed to set beacon parameters`): try `wpa` (TKIP) or,
+  as a hardware test only, `open`. When `open`, no password is required.
+- Docs: added a Wi-Fi adapter compatibility section with the log symptoms of an
+  incompatible radio and known-good AP chipsets (MediaTek MT7601U/MT76x2U,
+  Ralink RT5370/rt2800usb).
+
 ## 0.3.7
 
 - **hostapd:** dropped `ieee80211n`/`wmm` so the AP uses a plain 20MHz channel.
