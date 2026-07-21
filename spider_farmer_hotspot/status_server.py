@@ -8,6 +8,7 @@ import html
 import json
 import os
 import socket
+import subprocess
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -35,6 +36,24 @@ def leases():
     except FileNotFoundError:
         pass
     return rows
+
+
+def redirect_hits():
+    """Packet count on the 8883 -> proxy_port REDIRECT rule (None if no rule)."""
+    try:
+        out = subprocess.run(
+            ["iptables", "-t", "nat", "-L", "PREROUTING", "-v", "-n", "-x"],
+            capture_output=True, text=True, timeout=2,
+        ).stdout
+    except Exception:
+        return None
+    for ln in out.splitlines():
+        if "REDIRECT" in ln and "dpt:8883" in ln:
+            try:
+                return int(ln.split()[0])
+            except Exception:
+                return None
+    return None
 
 
 def proxy_listening(port=8883):
@@ -65,6 +84,14 @@ def page():
     redirect_html = (
         f" (device :8883 &rarr; :{proxy_port})" if proxy_port != 8883 else ""
     )
+    hits = redirect_hits() if proxy_port != 8883 else None
+    if hits is not None:
+        color = "#3fb950" if hits > 0 else "#d29922"
+        note = "" if hits > 0 else " — no device has hit :8883 yet"
+        hits_html = (f"<div style='margin-top:6px'><span class=k>Redirect hits:</span> "
+                     f"<span style='color:{color}'>{hits} pkts{note}</span></div>")
+    else:
+        hits_html = ""
     trs = ""
     for mac, ip, name, exp in rows:
         try:
@@ -99,6 +126,7 @@ th{{color:#9aa;font-weight:400}}
   <div style='margin-top:6px'><span class=k>DNS redirect:</span>
        sf.mqtt.spider-farmer.com &rarr; {e(dns_target)}:8883{redirect_html}</div>
   <div style='margin-top:6px'><span class=k>Proxy:</span> {proxy_html}</div>
+  {hits_html}
 </div>
 <div class=card>
   <h3>Connected clients ({len(rows)})</h3>

@@ -4,6 +4,20 @@ All notable changes to the **Spider Farmer Hotspot** add-on. The Supervisor
 offers an update whenever the `version` in `config.yaml` increases; the notes
 below are shown on the add-on's Changelog tab.
 
+## 0.5.2
+
+- **Dashboard: redirect packet counter.** When `proxy_port` != 8883, the dashboard now
+  shows how many packets have hit the 8883 -> proxy redirect rule. 0 pkts means no device
+  has actually sent traffic to :8883 on the hotspot (it isn't attempting the cloud
+  connection, or is using a cached IP); >0 confirms the redirect is catching it.
+
+## 0.5.1
+
+- **Fix: DNS/DHCP logs were invisible.** dnsmasq defaulted to syslog (absent in the
+  container), so `log-dhcp` and the `dns_logging` query log never reached the add-on
+  Log tab. Added `log-facility=-` so all dnsmasq logging goes to stderr and shows up
+  in the log.
+
 ## 0.5.0
 
 - **`proxy_port` option + port redirect.** Devices always connect to the cloud on

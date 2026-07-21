@@ -13,7 +13,7 @@
 #   auto    - nmcli if a running NetworkManager is reachable, else hostapd.
 set -uo pipefail
 
-ADDON_VERSION="0.5.0"
+ADDON_VERSION="0.5.2"
 OPTIONS=/data/options.json
 NM_CON="SF-Bridge-Hotspot"
 DNSMASQ_PID=""
@@ -213,6 +213,7 @@ dhcp-option=6,${HOTSPOT_IP}
 address=/sf.mqtt.spider-farmer.com/${DNS_TARGET}
 dhcp-leasefile=/data/dnsmasq.leases
 log-dhcp
+log-facility=-
 DNSM
 # Optional: log every DNS query (noisy) to see the controller's cloud lookups.
 if [ "${DNS_LOGGING}" = "true" ]; then
