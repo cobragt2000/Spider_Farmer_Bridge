@@ -3,6 +3,25 @@
 All notable changes to the Spider Farmer Bridge integration.
 Each section below is ready to paste into the matching GitHub release.
 
+## 3.19.11
+
+### Changed
+- **Overview tab: devices are now tiles.** Lights, Fan, Blower, Heater, Humidifier and
+  Dehumidifier appear as tiles in a grid like the Parameters, mirroring the SF app's
+  "Digital Device" screen. Each tile shows its live state (e.g. `65%`, `On`, `Off`,
+  `Offline`) and **expands on click** to reveal its controls — power, brightness/speed
+  slider, and any mode/level/oscillation options — the same drop-down pattern as the soil
+  tiles. (Bundled card v0.14.0.)
+
+## 3.19.10
+
+### Added
+- **Live value bubble on card sliders.** Every slider in the tent card and the SE light
+  card now shows a small value bubble above the thumb while you drag it, updating in real
+  time (e.g. `72°F`, `65%`, `250µmol`, `10m`). The value is only written to the device when
+  you release, as before. Applies to environment targets, calibration offsets, light/fan
+  levels, and the light schedule brightness/fade sliders. (Bundled card v0.13.0.)
+
 ## 3.19.9
 
 ### Fixes
