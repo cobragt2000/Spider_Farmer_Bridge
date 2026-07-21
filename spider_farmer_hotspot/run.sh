@@ -13,11 +13,12 @@
 #   auto    - nmcli if a running NetworkManager is reachable, else hostapd.
 set -uo pipefail
 
-ADDON_VERSION="0.3.9"
+ADDON_VERSION="0.4.0"
 OPTIONS=/data/options.json
 NM_CON="SF-Bridge-Hotspot"
 DNSMASQ_PID=""
 HOSTAPD_PID=""
+STATUS_PID=""
 BACKEND=""
 CHOSEN_IFACE=""
 
@@ -38,6 +39,7 @@ DNS_TARGET=$(get '.dns_target')
 COUNTRY=$(get '.country_code')
 UNMANAGE=$(get '.unmanage_via_nmcli')
 SECURITY=$(get '.security')
+DNS_LOGGING=$(get '.dns_logging')
 
 if [ -z "${DNS_TARGET}" ] || [ "${DNS_TARGET}" = "null" ]; then
   DNS_TARGET="${HOTSPOT_IP}"
@@ -206,12 +208,19 @@ dhcp-range=${DHCP_START},${DHCP_END},${NETMASK},12h
 dhcp-option=3,${HOTSPOT_IP}
 dhcp-option=6,${HOTSPOT_IP}
 address=/sf.mqtt.spider-farmer.com/${DNS_TARGET}
+dhcp-leasefile=/data/dnsmasq.leases
+log-dhcp
 DNSM
+# Optional: log every DNS query (noisy) to see the controller's cloud lookups.
+if [ "${DNS_LOGGING}" = "true" ]; then
+  echo "log-queries" >> "${DNSMASQ_CONF}"
+fi
 
 # --- cleanup on exit -----------------------------------------------------
 cleanup() {
   log "Shutting down hotspot..."
   [ -n "${DNSMASQ_PID}" ] && kill "${DNSMASQ_PID}" 2>/dev/null || true
+  [ -n "${STATUS_PID}" ] && kill "${STATUS_PID}" 2>/dev/null || true
   [ -n "${HOSTAPD_PID}" ] && kill "${HOSTAPD_PID}" 2>/dev/null || true
   if [ "${BACKEND}" = "nmcli" ]; then
     nmcli con down "${NM_CON}" 2>/dev/null || true
@@ -353,6 +362,22 @@ if [ "${BACKEND}" = "nmcli" ]; then
 else
   start_hostapd || { log "hostapd backend failed."; exec sleep infinity; }
 fi
+
+# Health check: is the integration's proxy actually listening on :8883? A
+# device can join the hotspot and resolve the redirect, yet still be offline if
+# nothing answers at the DNS target.
+if command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -q ':8883 '; then
+  log "proxy port :8883 is listening (Spider Farmer Bridge integration up)."
+else
+  log "WARNING: nothing is listening on :8883. Devices will join the hotspot but"
+  log "stay OFFLINE until the Spider Farmer Bridge integration is running and its"
+  log "proxy is reachable at ${DNS_TARGET}:8883 (the DNS redirect target)."
+fi
+
+# Status dashboard (HA ingress): connected clients, redirect + proxy health.
+log "Starting status dashboard on ingress port 8099..."
+INGRESS_PORT=8099 python3 /status_server.py &
+STATUS_PID=$!
 
 log "Hotspot running. Waiting on services..."
 while true; do

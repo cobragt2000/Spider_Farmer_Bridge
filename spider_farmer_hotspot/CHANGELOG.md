@@ -4,6 +4,20 @@ All notable changes to the **Spider Farmer Hotspot** add-on. The Supervisor
 offers an update whenever the `version` in `config.yaml` increases; the notes
 below are shown on the add-on's Changelog tab.
 
+## 0.4.0
+
+- **Status dashboard (HA ingress).** The add-on now has a Web UI (Open in the
+  sidebar / add-on page) showing the AP settings, the DNS redirect target,
+  whether the integration's proxy is **listening on :8883**, and a live table of
+  **connected Wi-Fi clients** (name / IP / MAC / lease) from the DHCP leases.
+- **DHCP logging** is always on now (`log-dhcp` + a lease file), so the add-on
+  log shows each device's DHCP handshake and assigned IP. New **`dns_logging`**
+  option adds per-query DNS logging to see the controller's cloud lookups
+  (noisy; off by default).
+- **Proxy health check at startup:** logs a clear warning if nothing is
+  listening on :8883 (a device can join the hotspot yet stay offline if the
+  integration/proxy isn't reachable at the DNS target).
+
 ## 0.3.9
 
 - **Raspberry Pi / brcmfmac support:** disable Wi-Fi powersave on the AP

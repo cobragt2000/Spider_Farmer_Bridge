@@ -120,6 +120,25 @@ create the AP (the nmcli backend) is the smoothest path. No extra configuration
 is needed beyond setting your country (Settings > System > General) and an
 SSID/password here.
 
+## Status dashboard
+
+The add-on has a Web UI (the **Open Web UI** button on the add-on page, or its
+sidebar panel). It shows the AP settings, the DNS redirect target, whether the
+Spider Farmer Bridge proxy is **listening on :8883**, and a live table of the
+**Wi-Fi clients** currently joined to the hotspot (name / IP / MAC / lease).
+
+Use it to debug a device that won't come online:
+
+1. **Is the device listed as a client?** No -> it didn't join the hotspot or get
+   a DHCP lease (check password/pairing; the add-on log shows DHCP handshakes).
+2. **Is ":8883" shown as listening?** No -> the integration isn't running or its
+   proxy isn't reachable at the DNS target; start it / fix the redirect target.
+3. **Device listed and :8883 listening, but still offline in the app?** Turn on
+   the `dns_logging` option and watch the add-on log for the device querying
+   `sf.mqtt.spider-farmer.com` — that confirms the redirect is being used. If the
+   query resolves to the DNS target but the app stays offline, the proxy relay to
+   the real cloud is the next thing to check.
+
 ## First-time pairing
 
 1. Install and start the add-on; confirm the `SF-Bridge` network appears.
