@@ -4,6 +4,14 @@ All notable changes to the **Spider Farmer Hotspot** add-on. The Supervisor
 offers an update whenever the `version` in `config.yaml` increases; the notes
 below are shown on the add-on's Changelog tab.
 
+## 0.6.8
+
+- **`proxy_port` now defaults to `8000`** (was `8883`), matching the integration's new
+  default listen port. The MQTT broker add-on binds `8883` on the HA host, so the proxy
+  listens on `8000` and the add-on redirects the hotspot's inbound `8883` there. Existing
+  installs keep whatever you set; new installs line up out of the box. If you changed the
+  integration's listen port, set `proxy_port` to match.
+
 ## 0.6.7
 
 - **Dropped the socat forwarder + :18883 hop.** Now that we know the integration proxy

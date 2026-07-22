@@ -44,6 +44,15 @@ def _sec_to_hhmm(sec: Any) -> str:
     return f"{sec // 3600:02d}:{(sec % 3600) // 60:02d}"
 
 
+def _sec_to_hhmmss(sec: Any) -> str:
+    """Duration as HH:MM:SS (fan cycle run/off durations, not a clock time)."""
+    try:
+        sec = max(0, int(sec))
+    except (ValueError, TypeError):
+        sec = 0
+    return f"{sec // 3600:02d}:{(sec % 3600) // 60:02d}:{sec % 60:02d}"
+
+
 # weekmask bit -> day: bit0=Sun, bit1=Mon, … bit6=Sat (confirmed from app logs:
 # Mon/Wed/Fri = 42 = bits 1,3,5; Sun/Tue/Thu/Sat = 85 = bits 0,2,4,6).
 def _weekmask_to_days(wm: Any) -> list:
@@ -214,6 +223,16 @@ _FAN_MODE_MAP = {
     7: "Environment: Prioritize Temp", 8: "Environment: Prioritize Humi",
     13: "Environment: Temp & Humi",
 }
+# Simplified Fan Mode (card select) + the environment Run Mode sub-select.
+_FAN_SIMPLE_MODE_MAP = {
+    None: "Manual", 0: "Manual", 1: "Time Slot", 2: "Cycle",
+    3: "Environment", 4: "Environment", 7: "Environment",
+    8: "Environment", 13: "Environment",
+}
+_FAN_RUN_MODE_MAP = {
+    7: "Prioritize temperature", 8: "Prioritize humidity",
+    3: "Temperature only", 4: "Humidity only", 13: "Temperature & humidity",
+}
 # Climate accessory operating mode.
 _CLIMATE_MODE_MAP = {None: "Manual", 1: "Time/Cycle", 4: "Environment"}
 # Standalone SE light mode field.
@@ -308,12 +327,17 @@ def _decode_light(out, e, num, block, cache=None):
         out[f"ggs/ha/{e}/light_{num}_mode/state"] = _LIGHT_MODE_MAP.get(
             int(mt), f"Mode {mt}"
         )
+    # Go dark / Turn off temperature thresholds. The device stores 0 (== below
+    # the valid 59-122 °F range) for the disabled state; surface that as "0" so
+    # the card's dropdown shows "Off".
     dark = val("darkTemp")
     if dark is not None:
-        out[f"ggs/ha/{e}/light_{num}_go_dark/state"] = str(round(float(dark) * 9 / 5 + 32))
+        f = round(float(dark) * 9 / 5 + 32)
+        out[f"ggs/ha/{e}/light_{num}_go_dark/state"] = str(f) if f >= 59 else "0"
     off = val("offTemp")
     if off is not None:
-        out[f"ggs/ha/{e}/light_{num}_turn_off/state"] = str(round(float(off) * 9 / 5 + 32))
+        f = round(float(off) * 9 / 5 + 32)
+        out[f"ggs/ha/{e}/light_{num}_turn_off/state"] = str(f) if f >= 59 else "0"
     # Time Slot schedule (timePeriod[0]) — start/stop, target brightness, fade.
     tp = val("timePeriod")
     if isinstance(tp, list) and tp:
@@ -330,6 +354,13 @@ def _decode_light(out, e, num, block, cache=None):
         out[f"ggs/ha/{e}/light_{num}_ppfd_start/state"] = _sec_to_hhmm(p0.get("startTime", 0))
         out[f"ggs/ha/{e}/light_{num}_ppfd_stop/state"] = _sec_to_hhmm(p0.get("endTime", 0))
         out[f"ggs/ha/{e}/light_{num}_ppfd_fade/state"] = str(int(p0.get("fadeTime", 0) or 0) // 60)
+    # PPFD dimming range (min/max brightness the PPFD loop stays within).
+    pmin = val("ppfdMinBrightness")
+    if pmin is not None:
+        out[f"ggs/ha/{e}/light_{num}_ppfd_min/state"] = str(int(pmin or 0))
+    pmax = val("ppfdMaxBrightness")
+    if pmax is not None:
+        out[f"ggs/ha/{e}/light_{num}_ppfd_max/state"] = str(int(pmax or 0))
 
 
 def _decode_blower(out, e, block):
@@ -373,6 +404,33 @@ def _decode_fan(out, e, block, cache):
         out[f"ggs/ha/{e}/fan_oscillation/state"] = str(shake)
     if natural_raw is not None:
         out[f"ggs/ha/{e}/fan_natural_wind/state"] = "ON" if _on(natural) else "OFF"
+
+    # ── Mode-aware config fields (arrive in config responses; fall back to the
+    # cached fan block so they don't sit on "unknown" between config frames) ──
+    def val(key):
+        return block.get(key, cache.get(key))
+
+    mt = val("modeType")
+    if mt is not None:
+        out[f"ggs/ha/{e}/fan_mode_set/state"] = _FAN_SIMPLE_MODE_MAP.get(int(mt), "Manual")
+        if int(mt) in _FAN_RUN_MODE_MAP:
+            out[f"ggs/ha/{e}/fan_run_mode/state"] = _FAN_RUN_MODE_MAP[int(mt)]
+    ms = val("maxSpeed")
+    if ms is not None:
+        out[f"ggs/ha/{e}/fan_schedule_gear/state"] = str(int(ms or 0))
+    mn = val("minSpeed")
+    if mn is not None:
+        out[f"ggs/ha/{e}/fan_standby_speed/state"] = str(int(mn or 0))
+    tp = val("timePeriod")
+    if isinstance(tp, list) and tp:
+        out[f"ggs/ha/{e}/fan_schedule_start/state"] = _sec_to_hhmm(tp[0].get("startTime", 0))
+        out[f"ggs/ha/{e}/fan_schedule_stop/state"] = _sec_to_hhmm(tp[0].get("endTime", 0))
+    ct = val("cycleTime")
+    if isinstance(ct, dict) and ct:
+        out[f"ggs/ha/{e}/fan_cycle_start/state"] = _sec_to_hhmm(ct.get("startTime", 0))
+        out[f"ggs/ha/{e}/fan_cycle_run/state"] = _sec_to_hhmmss(ct.get("openDur", 0))
+        out[f"ggs/ha/{e}/fan_cycle_off/state"] = _sec_to_hhmmss(ct.get("closeDur", 0))
+        out[f"ggs/ha/{e}/fan_cycle_times/state"] = str(int(ct.get("times", 1) or 1))
 
 
 def _decode_outlets(out, e, outlet):

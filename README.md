@@ -146,7 +146,7 @@ is tested end-to-end against real injected payloads.
 ## How it works
 
 ```
-GGS device ──TLS──► MITM proxy (this integration, port 8883)
+GGS device ──TLS──► MITM proxy (this integration, listen port)
                        │            └──TLS──► Spider Farmer cloud (unchanged)
                        ▼
                   state bus ──► native HA entities
@@ -158,7 +158,10 @@ Your network redirects the devices' cloud traffic
 (`sf.mqtt.spider-farmer.com:8883`) to the machine running HA. The
 integration terminates TLS with bundled certificates, relays everything to
 the real cloud (the SF app keeps working), and mirrors the decoded traffic
-into HA. Device types are detected from evidence on the wire — outlets mean
+into HA. Set the proxy's **listen port to something other than 8883** (e.g.
+`8000`) — the Mosquitto/MQTT broker add-on binds `8883` on the HA host, so the
+proxy must listen elsewhere; your redirect (or the hotspot) forwards the
+devices' `8883` traffic to that port. Device types are detected from evidence on the wire — outlets mean
 power strip; accessory blocks without outlets mean Display Panel; lights only
 means light controller — with automatic correction if later evidence
 disagrees.
@@ -168,9 +171,14 @@ disagrees.
 - Home Assistant 2024.x or newer
 - **One way to get the devices' cloud traffic to the HA host** (see
   [Connecting the devices](#connecting-the-devices)) — either a router/firewall
-  that can NAT-redirect outbound `TCP 8883` (pfSense, OPNsense, OpenWrt, etc.),
-  **or** the companion **Spider Farmer Hotspot** add-on (no router config)
-- The HA host reachable from the devices on the configured listen port
+  that can NAT-redirect the devices' outbound `TCP 8883` (pfSense, OPNsense,
+  OpenWrt, etc.), **or** the companion **Spider Farmer Hotspot** add-on (no
+  router config)
+- The HA host reachable from the devices on the integration's **listen port**.
+  Set the proxy to a port **other than 8883** (e.g. `8000`): the Mosquitto/MQTT
+  broker add-on already binds `8883` on the HA host, so the proxy can't share it.
+  Your redirect (or the hotspot) forwards the devices' `8883` traffic to that
+  port — the devices still dial `8883`, only the HA-side listener differs.
 
 ## Installation
 
@@ -215,10 +223,11 @@ Full steps in [`spider_farmer_hotspot/DOCS.md`](spider_farmer_hotspot/DOCS.md).
 ### Option B — Router NAT redirect (pfSense example)
 
 Port-forward rule on the devices' interface: source = the GGS devices,
-destination `any:8883` → redirect target = HA host, port 8883. Devices
-connect within seconds of the rule going live; no device-side changes. Needs a
-router that supports NAT/DNS overrides — most consumer routers do not, which is
-what Option A is for.
+destination `any:8883` → redirect target = HA host on the integration's
+**listen port** (e.g. `8000` — not `8883`, which the MQTT broker add-on binds
+on the HA host). Devices connect within seconds of the rule going live; no
+device-side changes. Needs a router that supports NAT/DNS overrides — most
+consumer routers do not, which is what Option A is for.
 
 ## Configuration (gear icon → Configure)
 

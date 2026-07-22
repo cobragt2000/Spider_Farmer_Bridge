@@ -3,9 +3,12 @@ DOMAIN             = "sf"
 CONF_LISTEN_PORT   = "listen_port"
 CONF_UPSTREAM_HOST = "upstream_host"
 CONF_UPSTREAM_PORT = "upstream_port"
-DEFAULT_LISTEN_PORT   = 8883
+# Local listen port for the MITM proxy. NOT 8883: the Mosquitto/MQTT broker
+# add-on binds 8883 on the HA host, so the proxy listens elsewhere and the
+# redirect/hotspot forwards the devices' 8883 traffic here.
+DEFAULT_LISTEN_PORT   = 8000
 DEFAULT_UPSTREAM_HOST = "sf.mqtt.spider-farmer.com"
-DEFAULT_UPSTREAM_PORT = 8883
+DEFAULT_UPSTREAM_PORT = 8883   # real Spider Farmer cloud port (unchanged)
 CONF_ALLOW_CONTROL = "allow_control"
 CONF_KEEP_OFFLINE = "keep_offline_entities"
 CONF_ENV_ENTITIES = "environment_entities"

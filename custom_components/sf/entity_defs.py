@@ -262,6 +262,9 @@ def build_device_entities(
               min_value=0, max_value=100, step=5),
             d("sensor", "blower_mode", "Blower Mode",
               device_class="enum", options=list(_FAN_MODE_OPTIONS), icon="mdi:cog"),
+            d("text", "blower_apply", "Blower Apply", kind="apply",
+              icon="mdi:content-save", entity_category="config",
+              command_field="blower", command_subfield="apply_bundle"),
         ]
     if caps["hasFan"] and want("fan"):
         defs += [
@@ -289,6 +292,44 @@ def build_device_entities(
               command_subfield="natural_wind", kind="toggle"),
             d("sensor", "fan_mode", "Fan Mode",
               device_class="enum", options=list(_FAN_MODE_OPTIONS), icon="mdi:cog"),
+            # ── Mode-aware controls (surfaced per-mode by the card's fan tile) ──
+            d("select", "fan_mode_set", "Fan Mode Set", icon="mdi:cog",
+              options=["Manual", "Time Slot", "Cycle", "Environment"],
+              command_field="fan", command_subfield="mode"),
+            d("select", "fan_run_mode", "Fan Run Mode", icon="mdi:cog-sync",
+              options=["Prioritize temperature", "Prioritize humidity",
+                       "Temperature only", "Humidity only",
+                       "Temperature & humidity"],
+              command_field="fan", command_subfield="env_submode"),
+            d("text", "fan_schedule_start", "Fan Schedule Start",
+              icon="mdi:clock-start", command_field="fan",
+              command_subfield="schedule_start"),
+            d("text", "fan_schedule_stop", "Fan Schedule Stop",
+              icon="mdi:clock-end", command_field="fan",
+              command_subfield="schedule_end"),
+            d("number", "fan_schedule_gear", "Fan Schedule Gear",
+              icon="mdi:speedometer", num_mode="box", min_value=1, max_value=10,
+              command_field="fan", command_subfield="schedule_speed"),
+            d("number", "fan_standby_speed", "Fan Standby Speed",
+              icon="mdi:speedometer-slow", num_mode="box", min_value=0, max_value=10,
+              command_field="fan", command_subfield="standby_speed"),
+            d("text", "fan_cycle_start", "Fan Cycle Start",
+              icon="mdi:clock-start", command_field="fan",
+              command_subfield="cycle_start"),
+            # Durations are HH:MM:SS (device stores openDur/closeDur seconds).
+            d("text", "fan_cycle_run", "Fan Cycle Run", kind="duration",
+              icon="mdi:timer-play", command_field="fan",
+              command_subfield="cycle_run"),
+            d("text", "fan_cycle_off", "Fan Cycle Off", kind="duration",
+              icon="mdi:timer-off", command_field="fan",
+              command_subfield="cycle_off"),
+            d("number", "fan_cycle_times", "Fan Cycle Times",
+              icon="mdi:repeat", num_mode="box", min_value=1, max_value=100,
+              command_field="fan", command_subfield="cycle_times"),
+            # Card Save button target: one atomic write of staged fields.
+            d("text", "fan_apply", "Fan Apply", kind="apply",
+              icon="mdi:content-save", entity_category="config",
+              command_field="fan", command_subfield="apply_bundle"),
         ]
 
     # ── Light brightness sensors (tied to their light blocks) ────────────
@@ -313,13 +354,14 @@ def build_device_entities(
             d("select", f"{lf}_mode", f"{ln} Mode", icon="mdi:cog",
               options=["Manual", "Time Slot", "PPFD"],
               command_field=cf, command_subfield="mode"),
+            # 0 == Off (disabled); otherwise 59-122 °F.
             d("number", f"{lf}_go_dark", f"{ln} Go Dark", unit="°F",
               icon="mdi:weather-night", num_mode="box",
-              min_value=60, max_value=120,
+              min_value=0, max_value=122,
               command_field=cf, command_subfield="dim_threshold"),
             d("number", f"{lf}_turn_off", f"{ln} Turn Off", unit="°F",
               icon="mdi:lightbulb-off", num_mode="box",
-              min_value=60, max_value=120,
+              min_value=0, max_value=122,
               command_field=cf, command_subfield="off_threshold"),
             # Time Slot schedule
             d("text", f"{lf}_schedule_start", f"{ln} Schedule Start",
@@ -330,16 +372,16 @@ def build_device_entities(
               command_field=cf, command_subfield="schedule_end"),
             d("number", f"{lf}_schedule_brightness", f"{ln} Schedule Brightness",
               unit="%", icon="mdi:brightness-percent", num_mode="box",
-              min_value=0, max_value=100,
+              min_value=11, max_value=100,
               command_field=cf, command_subfield="schedule_brightness"),
             d("number", f"{lf}_fade", f"{ln} Fade", unit="min",
               icon="mdi:weather-sunset", num_mode="box",
-              min_value=0, max_value=30,
+              min_value=0, max_value=60,
               command_field=cf, command_subfield="fade_minutes"),
             # PPFD schedule
             d("number", f"{lf}_ppfd_target", f"{ln} PPFD Target",
               unit="µmol", icon="mdi:white-balance-sunny", num_mode="box",
-              min_value=0, max_value=1000, step=10,
+              min_value=20, max_value=2000, step=10,
               command_field=cf, command_subfield="ppfd_target"),
             d("text", f"{lf}_ppfd_start", f"{ln} PPFD Start",
               icon="mdi:clock-start",
@@ -351,6 +393,16 @@ def build_device_entities(
               icon="mdi:weather-sunset", num_mode="box",
               min_value=0, max_value=30,
               command_field=cf, command_subfield="ppfd_fade_minutes"),
+            # PPFD dimming range (min/max brightness %).
+            d("number", f"{lf}_ppfd_min", f"{ln} Dimming Range Min", unit="%",
+              icon="mdi:brightness-5", num_mode="box", min_value=11, max_value=100,
+              command_field=cf, command_subfield="ppfd_min"),
+            d("number", f"{lf}_ppfd_max", f"{ln} Dimming Range Max", unit="%",
+              icon="mdi:brightness-7", num_mode="box", min_value=11, max_value=100,
+              command_field=cf, command_subfield="ppfd_max"),
+            d("text", f"{lf}_apply", f"{ln} Apply", kind="apply",
+              icon="mdi:content-save", entity_category="config",
+              command_field=cf, command_subfield="apply_bundle"),
         ]
 
     # ── Climate accessories — per block; strips too (v3.4.0) ─────────────
@@ -367,6 +419,9 @@ def build_device_entities(
               device_class="enum", options=list(_CLIMATE_MODE_OPTIONS), icon="mdi:cog"),
             d("sensor", "humidifier_water", "Humidifier Tank",
               device_class="enum", options=["Full", "Empty"], icon="mdi:water"),
+            d("text", "humidifier_apply", "Humidifier Apply", kind="apply",
+              icon="mdi:content-save", entity_category="config",
+              command_field="humidifier", command_subfield="apply_bundle"),
         ]
     if dtype in _FULL_TYPES and want("dehumidifier"):
         defs += [
@@ -383,6 +438,9 @@ def build_device_entities(
               device_class="enum", options=list(_CLIMATE_MODE_OPTIONS), icon="mdi:cog"),
             d("sensor", "dehumidifier_tank", "Dehumidifier Tank",
               device_class="enum", options=["Empty", "Full"], icon="mdi:cup-water"),
+            d("text", "dehumidifier_apply", "Dehumidifier Apply", kind="apply",
+              icon="mdi:content-save", entity_category="config",
+              command_field="dehumidifier", command_subfield="apply_bundle"),
         ]
     if dtype in _FULL_TYPES and want("heater"):
         defs += [
@@ -397,6 +455,9 @@ def build_device_entities(
               device_class="enum", options=list(_CLIMATE_MODE_OPTIONS), icon="mdi:cog"),
             d("sensor", "heater_status", "Heater Status",
               device_class="enum", options=["OK", "Alarm"], icon="mdi:fire"),
+            d("text", "heater_apply", "Heater Apply", kind="apply",
+              icon="mdi:content-save", entity_category="config",
+              command_field="heater", command_subfield="apply_bundle"),
         ]
 
     # ── Standalone SE-series light (v3.10.0) — read-only until the write

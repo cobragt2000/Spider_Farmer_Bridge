@@ -80,17 +80,25 @@ _LIGHT_SUBFIELDS = {
     "schedule_brightness", "schedule_start", "schedule_end", "fade_minutes",
     "ppfd_target", "ppfd_start", "ppfd_end", "ppfd_fade_minutes",
     "ppfd_min", "ppfd_max",
+    "apply_bundle",
 }
 # Light Mode select label -> modeType (panel Light 1/2). 12 == PPFD.
 _LIGHT_MODE_LABEL_TO_TYPE = {"Manual": 0, "Time Slot": 1, "PPFD": 12}
 # Fan/blower setting subfields handled by the fan-config write path.
 _FAN_SUBFIELDS = {
-    "preset_mode", "env_submode",
+    "mode", "preset_mode", "env_submode",
     "schedule_start", "schedule_end",
     "schedule_speed", "standby_speed",
-    "cycle_start", "cycle_run_minutes", "cycle_off_minutes", "cycle_times",
+    "cycle_start", "cycle_run", "cycle_off",
+    "cycle_run_minutes", "cycle_off_minutes",  # legacy aliases (minutes)
+    "cycle_times",
     "oscillation_level", "natural_wind",
+    "apply_bundle",
 }
+# Simplified Fan Mode select (card) -> modeType. "Environment" defaults to
+# Prioritize-temperature (7); the Run Mode select refines the exact variant.
+_FAN_SIMPLE_MODE_TO_TYPE = {"Manual": 0, "Time Slot": 1, "Cycle": 2, "Environment": 7}
+_FAN_ENV_MODETYPES = (3, 4, 7, 8, 13)
 # SE light schedule subfields (write via setConfigFile).
 _SE_SCHED_SUBFIELDS = {
     "schedule_start", "schedule_end", "schedule_brightness", "sunrise_minutes",
@@ -120,6 +128,16 @@ _ENV_DEFAULT = {
 
 def _f_to_c(f):
     return (float(f) - 32) * 5 / 9
+
+
+def _temp_threshold_c(value):
+    """Go-dark / turn-off temperature threshold in °C. The card sends 0 (or
+    'off') for the disabled state, which the device stores as darkTemp/offTemp
+    == 0 — not a real 0 °F. Any other value is a °F temperature."""
+    s = str(value).strip().lower()
+    if s in ("", "off", "0", "0.0"):
+        return 0
+    return _f_to_c(value)
 
 
 def _fdelta_to_c(f):
@@ -168,12 +186,41 @@ def _hhmm_to_seconds(s) -> int:
         return 0
 
 
+def _hms_to_seconds(value) -> int:
+    """Duration to seconds. Accepts 'HH:MM:SS', 'HH:MM' (=> :00), or a bare
+    number (already seconds). Raises ValueError on garbage so a bad value
+    rejects the write rather than silently sending 0."""
+    s = str(value).strip()
+    if ":" in s:
+        parts = [int(p) for p in s.split(":")]
+        while len(parts) < 3:
+            parts.append(0)
+        h, m, sec = parts[0], parts[1], parts[2]
+        return max(0, h * 3600 + m * 60 + sec)
+    return max(0, int(float(s)))
+
+
 def _field_of(block: dict, *keys, default=0):
     """First present key among ``keys`` (mOnOff/on, mLevel/level pairs)."""
     for k in keys:
         if k in block:
             return block[k]
     return default
+
+
+# Device-reported *live* fields. They mirror the running state, not the stored
+# setpoint (``on`` shadows ``mOnOff``; ``level`` shadows ``mLevel``). They leak
+# into the read-modify-write cache from device echoes — and if we send them back
+# in a setConfigField, ``on:1`` commands the accessory ON regardless of the
+# manual setpoint. So a mode/settings change would spin the fan up. Strip them
+# from every outgoing config block: only setpoints belong in a write.
+_LIVE_FIELDS = ("on", "level")
+
+
+def _strip_live(block: dict) -> dict:
+    for k in _LIVE_FIELDS:
+        block.pop(k, None)
+    return block
 
 
 def _config_field(mac: str, uid: str, root: str, module: str, obj: dict) -> dict:
@@ -243,6 +290,8 @@ def translate_command(
     if field.startswith("soil_") and ("_cal_" in field or field.endswith("_substrate")):
         return _cmd_soil_cfg(mac, uid, field, value, senconfig)
 
+    if field in ("heater", "humidifier", "dehumidifier") and subfield == "apply_bundle":
+        return _cmd_climate_config(mac, uid, field, value, state)
     if field in _CLIMATE_LEVEL_RANGE and subfield == "level":
         return _cmd_climate_level(mac, uid, field, value, state)
     if field in ("heater", "humidifier", "dehumidifier"):
@@ -550,6 +599,25 @@ def _cmd_light_config(mac, uid, field, value, subfield, state, light_state):
             "ppfdMinBrightness": 0, "ppfdMaxBrightness": 100,
         }
 
+    try:
+        if subfield == "apply_bundle":
+            # Atomic multi-field commit from the card's Save button.
+            payload = json.loads(value)
+            if not isinstance(payload, dict):
+                return None
+            for k, v in payload.items():
+                _apply_light_subfield(block, str(k), v)
+        else:
+            _apply_light_subfield(block, subfield, value)
+    except (ValueError, TypeError):
+        return None
+    return _config_field(mac, uid, "device", field, _strip_live(block))
+
+
+def _apply_light_subfield(block, subfield, value):
+    """Apply one panel-light setting into ``block`` in place. Raises
+    ValueError/TypeError on an unparseable value; unknown/invalid entries are
+    ignored so a bundle tolerates stray keys."""
     def tp0():
         tp = block.setdefault("timePeriod", [{}])
         if not tp:
@@ -562,42 +630,38 @@ def _cmd_light_config(mac, uid, field, value, subfield, state, light_state):
             pp.append({})
         return pp[0]
 
-    try:
-        if subfield == "mode":
-            mt = _LIGHT_MODE_LABEL_TO_TYPE.get(str(value), 0)
-            block["modeType"] = mt
-            if mt != 0:                       # remember the last non-manual mode
-                block["lastAutoModeType"] = mt
-        elif subfield == "dim_threshold":     # "Go dark" temp, wire is °C
-            block["darkTemp"] = _f_to_c(value)
-        elif subfield == "off_threshold":     # "Turn off" temp, wire is °C
-            block["offTemp"] = _f_to_c(value)
-        elif subfield == "schedule_brightness":
-            lv = _light_pct(value)
-            if lv is None:
-                return None
-            tp0()["brightness"] = lv
-        elif subfield == "schedule_start":
-            tp0()["startTime"] = _hhmm_to_seconds(value)
-        elif subfield == "schedule_end":
-            tp0()["endTime"] = _hhmm_to_seconds(value)
-        elif subfield == "fade_minutes":
-            tp0()["fadeTime"] = max(0, int(float(value))) * 60
-        elif subfield == "ppfd_target":
-            pp0()["brightness"] = max(0, min(1000, int(float(value))))
-        elif subfield == "ppfd_start":
-            pp0()["startTime"] = _hhmm_to_seconds(value)
-        elif subfield == "ppfd_end":
-            pp0()["endTime"] = _hhmm_to_seconds(value)
-        elif subfield == "ppfd_fade_minutes":
-            pp0()["fadeTime"] = max(0, int(float(value))) * 60
-        elif subfield == "ppfd_min":
-            block["ppfdMinBrightness"] = max(0, min(100, int(float(value))))
-        elif subfield == "ppfd_max":
-            block["ppfdMaxBrightness"] = max(0, min(100, int(float(value))))
-    except (ValueError, TypeError):
-        return None
-    return _config_field(mac, uid, "device", field, block)
+    if subfield == "mode":
+        mt = _LIGHT_MODE_LABEL_TO_TYPE.get(str(value), 0)
+        block["modeType"] = mt
+        if mt != 0:                       # remember the last non-manual mode
+            block["lastAutoModeType"] = mt
+    elif subfield == "dim_threshold":     # "Go dark" temp, wire is °C
+        block["darkTemp"] = _temp_threshold_c(value)
+    elif subfield == "off_threshold":     # "Turn off" temp, wire is °C
+        block["offTemp"] = _temp_threshold_c(value)
+    elif subfield == "schedule_brightness":
+        lv = _light_pct(value)
+        if lv is None:
+            return
+        tp0()["brightness"] = lv
+    elif subfield == "schedule_start":
+        tp0()["startTime"] = _hhmm_to_seconds(value)
+    elif subfield == "schedule_end":
+        tp0()["endTime"] = _hhmm_to_seconds(value)
+    elif subfield == "fade_minutes":
+        tp0()["fadeTime"] = max(0, int(float(value))) * 60
+    elif subfield == "ppfd_target":
+        pp0()["brightness"] = max(0, min(2000, int(float(value))))
+    elif subfield == "ppfd_start":
+        pp0()["startTime"] = _hhmm_to_seconds(value)
+    elif subfield == "ppfd_end":
+        pp0()["endTime"] = _hhmm_to_seconds(value)
+    elif subfield == "ppfd_fade_minutes":
+        pp0()["fadeTime"] = max(0, int(float(value))) * 60
+    elif subfield == "ppfd_min":
+        block["ppfdMinBrightness"] = max(0, min(100, int(float(value))))
+    elif subfield == "ppfd_max":
+        block["ppfdMaxBrightness"] = max(0, min(100, int(float(value))))
 
 
 # ── Fans / blowers ───────────────────────────────────────────────────────────
@@ -651,45 +715,17 @@ def _cmd_fan_config(mac, uid, field, value, subfield, state, fan_state):
 
     speed_max = 100 if field == "blower" else 10
     try:
-        if subfield == "preset_mode":
-            mt = _FAN_MODE_TO_TYPE.get(value)
-            if mt is None:
-                logger.warning("Unknown fan preset_mode: %s", value)
+        if subfield == "apply_bundle":
+            # Atomic multi-field commit from the card's Save button: apply every
+            # staged field into one block -> one setConfigField (no partial or
+            # racy per-field writes).
+            payload = json.loads(value)
+            if not isinstance(payload, dict):
                 return None
-            block["modeType"] = mt
-        elif subfield == "env_submode":
-            mt = _FAN_ENV_SUBMODE_TO_TYPE.get(value)
-            if mt is None:
-                logger.warning("Unknown fan env_submode: %s", value)
-                return None
-            block["modeType"] = mt
-        elif subfield == "schedule_start":
-            _fan_tp0(block)["startTime"] = _hhmm_to_seconds(value)
-        elif subfield == "schedule_end":
-            _fan_tp0(block)["endTime"] = _hhmm_to_seconds(value)
-        elif subfield == "schedule_speed":
-            # Active speed lives in different fields by mode; write both.
-            v = max(1, min(speed_max, int(float(value))))
-            block["maxSpeed"] = v
-            block["mLevel"] = v
-        elif subfield == "standby_speed":
-            block["minSpeed"] = max(0, min(speed_max, int(float(value))))
-        elif subfield == "cycle_start":
-            block.setdefault("cycleTime", {"weekmask": 127})["startTime"] = \
-                _hhmm_to_seconds(value)
-        elif subfield == "cycle_run_minutes":
-            block.setdefault("cycleTime", {"weekmask": 127})["openDur"] = \
-                max(0, int(float(value))) * 60
-        elif subfield == "cycle_off_minutes":
-            block.setdefault("cycleTime", {"weekmask": 127})["closeDur"] = \
-                max(0, int(float(value))) * 60
-        elif subfield == "cycle_times":
-            block.setdefault("cycleTime", {"weekmask": 127})["times"] = \
-                max(1, min(100, int(float(value))))
-        elif subfield == "oscillation_level":
-            block["shakeLevel"] = max(0, min(10, int(float(value))))
-        elif subfield == "natural_wind":
-            block["natural"] = _onoff(value)
+            for k, v in payload.items():
+                _apply_fan_subfield(block, str(k), v, speed_max)
+        else:
+            _apply_fan_subfield(block, subfield, value, speed_max)
     except (ValueError, TypeError):
         return None
 
@@ -699,7 +735,65 @@ def _cmd_fan_config(mac, uid, field, value, subfield, state, fan_state):
     if isinstance(tp, list) and tp and isinstance(tp[0], dict):
         tp[0].setdefault("enabled", 1)
         tp[0].setdefault("weekmask", 127)
-    return _config_field(mac, uid, "device", field, block)
+    return _config_field(mac, uid, "device", field, _strip_live(block))
+
+
+def _apply_fan_subfield(block, subfield, value, speed_max):
+    """Apply one fan/blower setting into ``block`` in place. Raises
+    ValueError/TypeError on an unparseable value; unknown subfields and unknown
+    enum values are ignored (so a bundle tolerates stray keys)."""
+    if subfield == "mode":
+        if value == "Environment":
+            # keep the current env submode if already environmental
+            cur_mt = int(block.get("modeType", 0) or 0)
+            block["modeType"] = cur_mt if cur_mt in _FAN_ENV_MODETYPES else 7
+        else:
+            block["modeType"] = _FAN_SIMPLE_MODE_TO_TYPE.get(value, 0)
+    elif subfield == "preset_mode":
+        mt = _FAN_MODE_TO_TYPE.get(value)
+        if mt is None:
+            logger.warning("Unknown fan preset_mode: %s", value)
+            return
+        block["modeType"] = mt
+    elif subfield == "env_submode":
+        mt = _FAN_ENV_SUBMODE_TO_TYPE.get(value)
+        if mt is None:
+            logger.warning("Unknown fan env_submode: %s", value)
+            return
+        block["modeType"] = mt
+    elif subfield == "schedule_start":
+        _fan_tp0(block)["startTime"] = _hhmm_to_seconds(value)
+    elif subfield == "schedule_end":
+        _fan_tp0(block)["endTime"] = _hhmm_to_seconds(value)
+    elif subfield == "schedule_speed":
+        # Active speed lives in different fields by mode; write both.
+        v = max(1, min(speed_max, int(float(value))))
+        block["maxSpeed"] = v
+        block["mLevel"] = v
+    elif subfield == "standby_speed":
+        block["minSpeed"] = max(0, min(speed_max, int(float(value))))
+    elif subfield == "cycle_start":
+        block.setdefault("cycleTime", {"weekmask": 127})["startTime"] = \
+            _hhmm_to_seconds(value)
+    elif subfield == "cycle_run":            # HH:MM:SS duration -> seconds
+        block.setdefault("cycleTime", {"weekmask": 127})["openDur"] = \
+            _hms_to_seconds(value)
+    elif subfield == "cycle_off":
+        block.setdefault("cycleTime", {"weekmask": 127})["closeDur"] = \
+            _hms_to_seconds(value)
+    elif subfield == "cycle_run_minutes":    # legacy (minutes)
+        block.setdefault("cycleTime", {"weekmask": 127})["openDur"] = \
+            max(0, int(float(value))) * 60
+    elif subfield == "cycle_off_minutes":
+        block.setdefault("cycleTime", {"weekmask": 127})["closeDur"] = \
+            max(0, int(float(value))) * 60
+    elif subfield == "cycle_times":
+        block.setdefault("cycleTime", {"weekmask": 127})["times"] = \
+            max(1, min(100, int(float(value))))
+    elif subfield == "oscillation_level":
+        block["shakeLevel"] = max(0, min(10, int(float(value))))
+    elif subfield == "natural_wind":
+        block["natural"] = _onoff(value)
 
 
 def _fan_tp0(block):
@@ -710,7 +804,9 @@ def _fan_tp0(block):
 
 
 # ── Climate accessories ──────────────────────────────────────────────────────
-def _cmd_climate_level(mac, uid, field, value, state):
+def _climate_level_value(field, value):
+    """Clamp a climate level to its range. Dehumidifier accepts Low/High
+    labels. Returns None if unparseable."""
     sv = str(value).strip().lower()
     if field == "dehumidifier" and sv in ("low", "high"):
         level = 0 if sv == "low" else 1
@@ -720,14 +816,43 @@ def _cmd_climate_level(mac, uid, field, value, state):
         except (ValueError, TypeError):
             return None
     lo, hi = _CLIMATE_LEVEL_RANGE[field]
-    level = max(lo, min(hi, level))
+    return max(lo, min(hi, level))
+
+
+def _cmd_climate_level(mac, uid, field, value, state):
+    level = _climate_level_value(field, value)
+    if level is None:
+        return None
     cur = state.get(field, {})
     # Setting a level does not toggle the accessory: mOnOff stays put.
-    return _config_field(mac, uid, "device", field, {
+    return _config_field(mac, uid, "device", field, _strip_live({
         "mOnOff": int(_field_of(cur, "on", "mOnOff")),
         "mLevel": level,
         "timePeriod": _TIME_PERIOD,
-    })
+    }))
+
+
+def _cmd_climate_config(mac, uid, field, value, state):
+    """Atomic multi-field commit for a climate accessory (card Save button).
+    Applies staged settings (currently just ``level``) into one write while
+    preserving the accessory's on/off state."""
+    try:
+        payload = json.loads(value)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    cur = state.get(field, {})
+    obj = {
+        "mOnOff": int(_field_of(cur, "on", "mOnOff")),
+        "mLevel": int(_field_of(cur, "level", "mLevel") or 0),
+        "timePeriod": _TIME_PERIOD,
+    }
+    if "level" in payload:
+        lv = _climate_level_value(field, payload["level"])
+        if lv is not None:
+            obj["mLevel"] = lv
+    return _config_field(mac, uid, "device", field, _strip_live(obj))
 
 
 def _cmd_climate_onoff(mac, uid, field, value, state, last):

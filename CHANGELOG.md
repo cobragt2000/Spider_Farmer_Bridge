@@ -3,6 +3,139 @@
 All notable changes to the Spider Farmer Bridge integration.
 Each section below is ready to paste into the matching GitHub release.
 
+## 3.19.25
+
+### Changed
+- **Light & fan settings are now dropdowns with the app's ranges.**
+  - *Light tile:* Target Brightness (11–100 %), Go dark and Turn off (**Off**, 59–122 °F),
+    Simulate Sunrise/Sunset (**Off**, 1–60 min), Target PPFD (20–2000 µmol). PPFD mode now
+    also exposes **Dimming Range Min/Max** (11–100 %).
+  - *Fan tile:* Gear (L1–L10), Oscillation (**Off**, 1–10), and Standby Speed — whose
+    options track the gear (gear 1 → Off only; gear 3 → Off/1/2; … gear 10 → Off/1–9),
+    exactly like the SF app.
+
+  "Off" on Go dark / Turn off now correctly disables the threshold (stores 0) instead of
+  writing 0 °F, and decodes back to "Off". PPFD target range raised to 2000. Two new
+  entities per light: `ppfd_min`, `ppfd_max`. (Bundled card v0.16.9.)
+
+## 3.19.24
+
+### Changed
+- **Default proxy listen port is now `8000`** (was `8883`). The Mosquitto/MQTT broker
+  add-on binds `8883` on the HA host, so a fresh install defaulting to `8883` would collide
+  with it. New installs now listen on `8000` out of the box; the redirect/hotspot forwards
+  the devices' `8883` traffic there. **Existing installs are unchanged** — your saved listen
+  port is kept. The companion Hotspot add-on's `proxy_port` default moves to `8000` to match
+  (add-on v0.6.8). README updated.
+
+## 3.19.23
+
+### Changed
+- **Mode changes now activate only on Save (matches the SF app).** Picking a scheduled
+  mode (Time Slot / PPFD / Cycle / Environment) no longer sends anything to the controller
+  — it just switches the tile view. The mode is committed together with its settings when
+  you press **Save**, which is also when the schedule activates. So choosing Time Slot no
+  longer turns a light on until you save. Manual stays live (direct control). Discard
+  reverts the staged mode too.
+
+### Fixed
+- **Fan tile: Time Slot now shows its settings.** Selecting Time Slot switches the fan tile
+  to the schedule fields immediately (previously it could stay on Power/Speed until the
+  device round-tripped).
+- **Fan Cycle time/duration pickers.** Cycle **Start Time** is now a time picker (HH:MM),
+  and **Run Duration** / **Off Duration** are HH:MM:SS pickers (the controller stores these
+  as seconds; they were previously whole-minute number boxes). Legacy minute writes still
+  work.
+
+## 3.19.22
+
+### Fixed
+- **Mode dropdown now switches the tile body instantly.** Changing a light/fan mode
+  (e.g. Time Slot → Manual) updated the tile body only after the device round-trip, so it
+  looked stuck until you clicked elsewhere. The dropdown is now optimistic — the body
+  reflects your pick immediately and reconciles when the device confirms. (Also fixes the
+  card not re-rendering on staged edits: the Save-draft state was missing from the update
+  check.)
+- **Time fields no longer clip on mobile.** The schedule start/stop time inputs kept a
+  usable minimum width and wrap instead of shrinking until the HH:MM (AM/PM) value is cut off.
+
+### Note
+- Switching a **light** to **Time Slot** may turn it on: that runs the light's saved
+  schedule, and if the current time is inside the schedule's ON window the controller
+  turns the light on (same as the Spider Farmer app). It isn't the integration forcing it
+  — the writes send `mOnOff:0`. PPFD mode stays off when its PPFD window isn't active.
+  Adjust or clear the schedule window, or use Manual, to keep it off.
+
+## 3.19.21
+
+### Added
+- **Save button on climate accessories too.** Heater, Humidifier and Dehumidifier tiles
+  now stage their Level behind the same **Save**/Discard flow as the fan and light tiles
+  (Power stays live). Save commits as one atomic write that preserves the accessory's
+  on/off state. New hidden Apply entities: `heater_apply`, `humidifier_apply`,
+  `dehumidifier_apply`. (Bundled card v0.16.6.)
+
+## 3.19.20
+
+### Added
+- **Save button for schedule settings (hybrid live/staged tiles).** Fan, blower and
+  panel-light tiles now stage their schedule/cycle/environment parameters locally and
+  commit them with a **Save** button as a single atomic device write — no more partial
+  or racy per-field writes while you're mid-edit, and it matches the Spider Farmer app's
+  configure-then-save flow. Momentary controls stay live: Power, the Manual speed/
+  brightness slider, Oscillation and Natural Wind still apply the instant you change them.
+  Rows with an uncommitted edit show a small accent bar; Discard reverts staged changes.
+
+  New per-device "Apply" entities (hidden under Config) carry the bundle:
+  `fan_apply`, `blower_apply`, `light_1_apply`, `light_2_apply`. (Bundled card v0.16.5.)
+
+## 3.19.19
+
+### Fixed
+- **Changing a mode/setting could switch a device on.** Every accessory
+  (fan, blower, light) preserves its on/off state across mode and setting
+  changes now. The device's live telemetry fields (`on`/`level`) were leaking
+  into the read-modify-write cache from device echoes and getting sent back in
+  the config write — and `on:1` commands the device ON regardless of the manual
+  setpoint, so e.g. switching the fan to Time Slot spun it up to 10%. Outgoing
+  config writes now strip those live fields and send only setpoints
+  (`mOnOff`/`mLevel`/…), so nothing we send flips the power.
+
+  Note: in a *schedule/cycle/environment* mode the device's own automation still
+  decides on/off from the schedule — same as the official app. This fix stops
+  the integration from forcing it on.
+
+## 3.19.18
+
+### Fixed
+- **Fan Mode dropdown desynced from the tile body.** The select was uncontrolled, so
+  picking a mode made the dropdown jump ahead to your choice while the tile body still
+  showed the previous mode's controls (e.g. dropdown said "Time Slot" but the Manual
+  Speed slider stayed). All dropdowns are now bound to the confirmed entity state, so the
+  mode selector and its per-mode controls always move together once the device confirms.
+  (Bundled card v0.16.4.)
+
+## 3.19.17
+
+### Added
+- **Mode-aware Fan tile.** The expanded fan tile now mirrors the app: a **Mode** selector
+  (Manual / Time Slot / Cycle / Environment) drives which controls appear.
+  - *Manual* — Speed slider.
+  - *Time Slot* — Schedule start/stop, Gear, Oscillation, Standby Speed, Natural Wind.
+  - *Cycle* — Start time, Run/Off minutes, Execution Times, Gear, Oscillation, Standby Speed, Natural Wind.
+  - *Environment* — Run Mode (temp/humidity priority), Gear, Oscillation, Standby Speed, Natural Wind.
+
+  Backed by 10 new fan entities and a confirmed write path (`modeType`, `shakeLevel`,
+  `natural`, `minSpeed`/`maxSpeed`, `timePeriod`, `cycleTime`). (Bundled card v0.16.3.)
+
+## 3.19.16
+
+### Fixed
+- **Device-tile fonts now match.** In an expanded device tile, the auto-surfaced controls
+  (e.g. Fan Oscillation, Natural Wind, Heater Level) rendered in a smaller label style than
+  the Power/Speed rows. They now use the same row style, so all labels in a tile match.
+  (Bundled card v0.16.2.)
+
 ## 3.19.15
 
 ### Fixed
