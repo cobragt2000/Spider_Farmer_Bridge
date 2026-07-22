@@ -7,14 +7,11 @@ is listening on :8883, and the list of connected Wi-Fi clients (DHCP leases).
 import html
 import json
 import os
-import shutil
+import re
 import socket
 import subprocess
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-# Same nft-backed backend the entrypoint uses to add the rules.
-IPT = "iptables-nft" if shutil.which("iptables-nft") else "iptables"
 
 OPTIONS = "/data/options.json"
 LEASES = "/data/dnsmasq.leases"
@@ -43,20 +40,17 @@ def leases():
 
 
 def redirect_hits():
-    """Packet count on the 8883 -> proxy_port REDIRECT rule (None if no rule)."""
+    """Packets that hit the nft 8883 -> proxy redirect rule (None if none)."""
     try:
         out = subprocess.run(
-            [IPT, "-t", "nat", "-L", "PREROUTING", "-v", "-n", "-x"],
+            ["nft", "list", "chain", "ip", "sfhs", "pre"],
             capture_output=True, text=True, timeout=2,
         ).stdout
+        m = re.search(r"counter packets (\d+)", out)
+        if m:
+            return int(m.group(1))
     except Exception:
-        return None
-    for ln in out.splitlines():
-        if "REDIRECT" in ln and "dpt:8883" in ln:
-            try:
-                return int(ln.split()[0])
-            except Exception:
-                return None
+        pass
     return None
 
 
@@ -76,7 +70,8 @@ def proxy_listening(port=8883):
 
 def page():
     o = opts()
-    dns_target = o.get("dns_target") or o.get("hotspot_ip", "")
+    hotspot_ip = o.get("hotspot_ip", "")
+    dns_target = o.get("dns_target") or hotspot_ip
     proxy_port = int(o.get("proxy_port", 8883) or 8883)
     rows = leases()
     up = proxy_listening(proxy_port)
@@ -85,15 +80,13 @@ def page():
         else f"<span style='color:#f85149'>:{proxy_port} NOT listening ✗ — is the "
              "Spider Farmer Bridge integration running?</span>"
     )
-    redirect_html = (
-        f" (device :8883 &rarr; :{proxy_port})" if proxy_port != 8883 else ""
-    )
-    hits = redirect_hits() if proxy_port != 8883 else None
+    redirect_html = f" (device :8883 &rarr; proxy :{proxy_port})"
+    hits = redirect_hits()
     if hits is not None:
-        color = "#3fb950" if hits > 0 else "#d29922"
-        note = "" if hits > 0 else " — no device has hit :8883 yet"
-        hits_html = (f"<div style='margin-top:6px'><span class=k>Redirect hits:</span> "
-                     f"<span style='color:{color}'>{hits} pkts{note}</span></div>")
+        hcolor = "#3fb950" if hits > 0 else "#d29922"
+        note = "" if hits > 0 else " (no device traffic on :8883 yet)"
+        hits_html = (f"<div style='margin-top:6px'><span class=k>Cloud redirect:</span> "
+                     f"<span style='color:{hcolor}'>{hits} pkts{note}</span></div>")
     else:
         hits_html = ""
     trs = ""

@@ -13,14 +13,14 @@
 #   auto    - nmcli if a running NetworkManager is reachable, else hostapd.
 set -uo pipefail
 
-ADDON_VERSION="0.5.4"
+ADDON_VERSION="0.6.7"
 OPTIONS=/data/options.json
 NM_CON="SF-Bridge-Hotspot"
 DNSMASQ_PID=""
 HOSTAPD_PID=""
 STATUS_PID=""
-PORT_RULE_ADDED=""
-INET_RULES_ADDED=""
+TCPDUMP_PID=""
+NFT_ADDED=""
 BACKEND=""
 CHOSEN_IFACE=""
 
@@ -46,12 +46,14 @@ PROXY_PORT=$(get '.proxy_port')
 [ -z "${PROXY_PORT}" ] || [ "${PROXY_PORT}" = "null" ] && PROXY_PORT=8883
 INTERNET_ACCESS=$(get '.internet_access')
 
-# Prefer the nft-backed iptables: HAOS processes nftables, so rules added with
-# the legacy backend land in a table the kernel never evaluates (they "succeed"
-# but match 0 packets). iptables-nft writes to the ruleset the kernel uses.
-IPT=iptables
-command -v iptables-nft >/dev/null 2>&1 && IPT=iptables-nft
-log "using iptables backend: ${IPT}"
+# All firewall work goes through native nftables (HAOS's own backend), in a
+# single dedicated table "sfhs" so teardown is one command. Helper creates the
+# table on demand (idempotent) and records that we own it.
+nft_table() {
+  command -v nft >/dev/null 2>&1 || return 1
+  nft add table ip sfhs 2>/dev/null || true
+  NFT_ADDED=1
+}
 
 if [ -z "${DNS_TARGET}" ] || [ "${DNS_TARGET}" = "null" ]; then
   DNS_TARGET="${HOTSPOT_IP}"
@@ -165,15 +167,17 @@ setup_regdomain() {
     log "the driver itself decides which channels are allowed."
   fi
 
-  # dump the full regulatory state and the actual 2.4GHz channel flags so a
-  # disabled/no-IR channel is visible in the log
-  log "regulatory state:"
-  iw reg get 2>/dev/null | sed 's/^/    /' >&2
-  if [ -n "${phy}" ]; then
-    log "2.4GHz channels on phy${phy} (look for 'disabled' / 'no IR'):"
-    iw phy "phy${phy}" info 2>/dev/null \
-      | awk '/Frequencies:/{f=1} /valid interface combinations|Supported commands|Band 2:/{f=0} f && /2[0-9][0-9][0-9] MHz/' \
-      | sed 's/^/    /' >&2
+  # Verbose radio diagnostics (full reg table + per-channel flags) only when
+  # dns_logging is on - useful when a radio won't come up, noise otherwise.
+  if [ "${DNS_LOGGING}" = "true" ]; then
+    log "regulatory state:"
+    iw reg get 2>/dev/null | sed 's/^/    /' >&2
+    if [ -n "${phy}" ]; then
+      log "2.4GHz channels on phy${phy} (look for 'disabled' / 'no IR'):"
+      iw phy "phy${phy}" info 2>/dev/null \
+        | awk '/Frequencies:/{f=1} /valid interface combinations|Supported commands|Band 2:/{f=0} f && /2[0-9][0-9][0-9] MHz/' \
+        | sed 's/^/    /' >&2
+    fi
   fi
 
   case "${after}" in
@@ -221,12 +225,12 @@ dhcp-option=3,${HOTSPOT_IP}
 dhcp-option=6,${HOTSPOT_IP}
 address=/sf.mqtt.spider-farmer.com/${DNS_TARGET}
 dhcp-leasefile=/data/dnsmasq.leases
-log-dhcp
 log-facility=-
 DNSM
-# Optional: log every DNS query (noisy) to see the controller's cloud lookups.
+# Verbose DHCP/DNS query logging only when dns_logging is on (the lease file,
+# which feeds the dashboard's client list, is always written above).
 if [ "${DNS_LOGGING}" = "true" ]; then
-  echo "log-queries" >> "${DNSMASQ_CONF}"
+  printf 'log-dhcp\nlog-queries\n' >> "${DNSMASQ_CONF}"
 fi
 
 # --- cleanup on exit -----------------------------------------------------
@@ -234,13 +238,9 @@ cleanup() {
   log "Shutting down hotspot..."
   [ -n "${DNSMASQ_PID}" ] && kill "${DNSMASQ_PID}" 2>/dev/null || true
   [ -n "${STATUS_PID}" ] && kill "${STATUS_PID}" 2>/dev/null || true
-  [ -n "${PORT_RULE_ADDED}" ] && "${IPT}" -t nat -D PREROUTING -i "${IFACE}" \
-    -p tcp --dport 8883 -j REDIRECT --to-ports "${PROXY_PORT}" 2>/dev/null || true
-  if [ -n "${INET_RULES_ADDED}" ]; then
-    "${IPT}" -t nat -D POSTROUTING -s "${PREFIX}.0/24" ! -o "${IFACE}" -j MASQUERADE 2>/dev/null || true
-    "${IPT}" -D FORWARD -i "${IFACE}" -s "${PREFIX}.0/24" -j ACCEPT 2>/dev/null || true
-    "${IPT}" -D FORWARD -d "${PREFIX}.0/24" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
-  fi
+  [ -n "${TCPDUMP_PID}" ] && kill "${TCPDUMP_PID}" 2>/dev/null || true
+  # One table holds the redirect + NAT + forward rules, so this removes them all.
+  [ -n "${NFT_ADDED}" ] && nft delete table ip sfhs 2>/dev/null || true
   [ -n "${HOSTAPD_PID}" ] && kill "${HOSTAPD_PID}" 2>/dev/null || true
   if [ "${BACKEND}" = "nmcli" ]; then
     nmcli con down "${NM_CON}" 2>/dev/null || true
@@ -389,33 +389,35 @@ fi
 # so an isolated hotspot leaves them "connected but offline". The :8883 redirect
 # below still intercepts the cloud connection to the local proxy regardless.
 if [ "${INTERNET_ACCESS}" = "true" ]; then
-  echo 1 > /proc/sys/net/ipv4/ip_forward 2>/dev/null || \
-    sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
-  if command -v "${IPT}" >/dev/null 2>&1 \
-     && "${IPT}" -t nat -A POSTROUTING -s "${PREFIX}.0/24" ! -o "${IFACE}" -j MASQUERADE 2>/dev/null \
-     && "${IPT}" -A FORWARD -i "${IFACE}" -s "${PREFIX}.0/24" -j ACCEPT 2>/dev/null \
-     && "${IPT}" -A FORWARD -d "${PREFIX}.0/24" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null; then
-    INET_RULES_ADDED=1
-    log "internet access: NAT ${PREFIX}.0/24 -> uplink enabled."
+  echo 1 > /proc/sys/net/ipv4/ip_forward 2>/dev/null \
+    || sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
+  log "ip_forward = $(cat /proc/sys/net/ipv4/ip_forward 2>/dev/null || echo '?') (1 = internet routing on)"
+  if nft_table \
+     && nft add chain ip sfhs post '{ type nat hook postrouting priority 100 ; }' 2>/dev/null \
+     && nft add rule ip sfhs post ip saddr "${PREFIX}.0/24" oifname != "${IFACE}" counter masquerade 2>/dev/null \
+     && nft add chain ip sfhs fwdc '{ type filter hook forward priority 0 ; }' 2>/dev/null \
+     && nft add rule ip sfhs fwdc iifname "${IFACE}" ip saddr "${PREFIX}.0/24" counter accept 2>/dev/null \
+     && nft add rule ip sfhs fwdc oifname "${IFACE}" ct state established,related counter accept 2>/dev/null; then
+    log "internet access: NAT ${PREFIX}.0/24 -> uplink enabled (nft)."
   else
     log "WARNING: could not enable internet NAT for the hotspot. Devices that need"
     log "internet before connecting to the cloud may stay offline."
   fi
 fi
 
-# Devices always dial the cloud on tcp/8883. If the integration's proxy listens
-# on a different port (proxy_port), redirect the hotspot's inbound 8883 to it so
-# the device actually reaches the proxy. (Was handled by the router in the NAT
-# method; the host does it here.)
-if [ "${PROXY_PORT}" != "8883" ]; then
-  if command -v "${IPT}" >/dev/null 2>&1 && "${IPT}" -t nat -A PREROUTING \
-        -i "${IFACE}" -p tcp --dport 8883 -j REDIRECT --to-ports "${PROXY_PORT}" 2>/dev/null; then
-    PORT_RULE_ADDED=1
-    log "port redirect: ${IFACE} tcp/8883 -> local :${PROXY_PORT}"
-  else
-    log "WARNING: could not add the 8883 -> ${PROXY_PORT} redirect. Devices expect"
-    log ":8883; without it they can't reach a proxy on :${PROXY_PORT}."
-  fi
+# The device dials the cloud on :8883, but HA's Mosquitto broker owns :8883 on
+# the host - so we intercept the device's :8883 with a native nft REDIRECT and
+# send it straight to the integration's proxy (proxy_port). The rule runs in
+# PREROUTING at an EARLY priority (ahead of Docker/HAOS's own nat chains and
+# before the socket layer), so it grabs the packet before Mosquitto sees it.
+# The proxy listens on 0.0.0.0:proxy_port, so it receives the redirected packet
+# on the hotspot IP - no userspace forwarder needed.
+if nft_table \
+   && nft add chain ip sfhs pre '{ type nat hook prerouting priority -150 ; }' 2>/dev/null \
+   && nft add rule ip sfhs pre iifname "${IFACE}" tcp dport 8883 counter redirect to :"${PROXY_PORT}" 2>/tmp/nft.err; then
+  log "cloud redirect: ${IFACE} tcp/8883 -> :${PROXY_PORT} (nft, pre-empts Mosquitto)"
+else
+  log "WARNING: could not add the 8883 -> ${PROXY_PORT} redirect: $(head -1 /tmp/nft.err 2>/dev/null)"
 fi
 
 # Health check: is the integration's proxy actually listening on proxy_port? A
@@ -433,6 +435,16 @@ fi
 log "Starting status dashboard on ingress port 8099..."
 INGRESS_PORT=8099 python3 /status_server.py &
 STATUS_PID=$!
+
+# Diagnostic: with dns_logging on, capture TCP SYNs on the hotspot so we can see
+# exactly where the device tries to connect (IP:port) and whether it gets a
+# reply. Shows up in the add-on log prefixed [tcpdump].
+if [ "${DNS_LOGGING}" = "true" ] && command -v tcpdump >/dev/null 2>&1; then
+  log "dns_logging on: capturing TCP SYNs on ${IFACE} ([tcpdump] lines)..."
+  tcpdump -i "${IFACE}" -n -l 'tcp[tcpflags] & tcp-syn != 0' 2>/dev/null \
+    | awk '{ print "[tcpdump] " $0; fflush(); }' >&2 &
+  TCPDUMP_PID=$!
+fi
 
 log "Hotspot running. Waiting on services..."
 while true; do

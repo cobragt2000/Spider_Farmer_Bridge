@@ -4,6 +4,99 @@ All notable changes to the **Spider Farmer Hotspot** add-on. The Supervisor
 offers an update whenever the `version` in `config.yaml` increases; the notes
 below are shown on the add-on's Changelog tab.
 
+## 0.6.7
+
+- **Dropped the socat forwarder + :18883 hop.** Now that we know the integration proxy
+  listens on 0.0.0.0, the nft rule redirects the device's :8883 **straight to the proxy
+  port** (e.g. :8000) instead of bouncing through a socat listener on :18883. The redirect
+  (which pre-empts Mosquitto) is still required and unchanged; this just removes the extra
+  process, the extra port, and the `socat` package. Also preserves the device's real source
+  IP (socat had masked it as 127.0.0.1). Dashboard shows the redirect packet count.
+
+## 0.6.6
+
+- **Firewall consolidated onto native nftables; iptables dropped.** All rules - the :8883
+  redirect, the internet MASQUERADE, and the forward accepts - now live in one nft table
+  (`sfhs`), so teardown is a single `nft delete table`. Removed the `iptables` package and
+  the iptables-nft code paths. No behaviour change; the working path is identical, just one
+  firewall tool instead of two. (nft syntax validated; note the forward chain is named
+  `fwdc` because `fwd` is a reserved word.)
+
+## 0.6.5
+
+- **Cleanup (no functional change to the working path).** Removed dead code left from the
+  abandoned DNAT-to-LAN-IP attempt (`LAN_IP`). Moved the noisy diagnostics behind the
+  existing `dns_logging` toggle: the verbose regulatory/channel dump and dnsmasq's
+  per-transaction DHCP + DNS query logging now only appear when `dns_logging` is on. The
+  DHCP lease file (which powers the dashboard's client list) is still always written, and
+  the concise one-line status messages (backend, forwarder, redirect, proxy check) stay.
+
+## 0.6.4
+
+- **Interception via native nftables at an early priority.** The iptables-nft REDIRECT of
+  :8883 wasn't reliably matching on HAOS (probably other nat chains ran first). The add-on
+  now installs a native `nft` rule in its own table at priority -150 - ahead of Docker/HAOS
+  - to redirect the device's :8883 to the socat forwarder on :18883 (with a packet counter).
+  Falls back to iptables-nft if `nft` is unavailable. This pre-empts Mosquitto so both can
+  share the host.
+
+## 0.6.3
+
+- **Cloud path now survives the Mosquitto :8883 clash.** Since no socket can share :8883
+  with Mosquitto, the add-on intercepts the device's :8883 with an iptables REDIRECT (in
+  PREROUTING, before the socket layer, so Mosquitto never sees it) and points it at a free
+  port (18883) where socat listens and bridges to the proxy on 127.0.0.1:proxy_port. This
+  combines packet-layer interception with a forwarder we fully control. The dashboard shows
+  both the forwarder state and the redirect packet count.
+
+## 0.6.2
+
+- **Fix: port 8883 clash with the Mosquitto broker.** HA's Mosquitto add-on binds :8883 on
+  all interfaces, so the forwarder's `0.0.0.0:8883` bind failed with "address in use". The
+  forwarder now binds the **specific hotspot IP** (`<hotspot_ip>:8883`) with SO_REUSEADDR,
+  which coexists with Mosquitto's wildcard bind - the device's traffic to the hotspot IP
+  reaches the SF proxy while Mosquitto keeps :8883 everywhere else. Also waits for the
+  hotspot IP to be assigned before binding.
+
+## 0.6.1
+
+- **Fix: socat forwarder failed to bind.** It bound the specific hotspot IP (which may not
+  be assigned yet at that moment) and its error was suppressed. Now it listens on `0.0.0.0`
+  and the real socat error is written to the log if it still fails.
+
+## 0.6.0
+
+- **Cloud connection now uses a userspace forwarder instead of iptables NAT.** The device's
+  SYN to the hotspot IP:8883 was getting no reply because HAOS's firewall drops the NAT
+  (REDIRECT/DNAT) path - yet inbound to a *listening socket* on the hotspot works (dnsmasq
+  answers DHCP/DNS there). So the add-on now runs `socat`, listening on
+  `<hotspot_ip>:8883` and forwarding to the proxy at `127.0.0.1:<proxy_port>`. The kernel
+  sends the SYN-ACK from a real socket - nothing for the firewall to drop. Replaces the
+  8883->proxy iptables redirect. The dashboard shows the forwarder's listening state.
+
+## 0.5.7
+
+- **Fix: light's SYN to the proxy got no reply (dropped).** tcpdump showed the device
+  sending SYN to 192.168.99.1:8883 with zero replies - the `REDIRECT` to the hotspot IP was
+  being dropped by the host firewall on HAOS. The add-on now **DNATs** tcp/8883 to the
+  host's detected **wired LAN IP:proxy_port** - the exact destination the working router-NAT
+  rule uses, which HAOS already permits - instead of REDIRECT to the hotspot IP.
+  (Falls back to REDIRECT if the LAN IP can't be detected.)
+
+## 0.5.6
+
+- **Fix: tcpdump capture produced no output** - the prefix pipe used `sed -u`, which
+  BusyBox's sed doesn't support, so it errored instead of logging. Switched to `awk` with
+  per-line flush; the `[tcpdump]` lines now appear in the log.
+
+## 0.5.5
+
+- **Diagnostics.** With `dns_logging` on, the add-on now runs a `tcpdump` capture of TCP
+  SYNs on the hotspot (`[tcpdump]` lines in the log) so we can see exactly where the device
+  tries to connect and whether it gets a reply. Also logs the effective `ip_forward` value.
+- Note: writing `/proc/sys/net/ipv4/ip_forward` from the container is blocked (read-only),
+  so hotspot internet relies on the host having forwarding enabled (Docker usually does).
+
 ## 0.5.4
 
 - **Fix: iptables rules had no effect on HAOS (0 redirect hits).** The container's default
