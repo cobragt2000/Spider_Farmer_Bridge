@@ -3,6 +3,13 @@
 All notable changes to the Spider Farmer Bridge integration.
 Each section below is ready to paste into the matching GitHub release.
 
+## 3.19.15
+
+### Fixed
+- **Lighting-period time boxes clipped on mobile.** The two time inputs plus their label
+  didn't fit the row width. The period now stacks under its label with the two inputs
+  flexing to share the full width (and given proper borders/padding). (Bundled card v0.16.1.)
+
 ## 3.19.14
 
 ### Added
