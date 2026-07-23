@@ -72,6 +72,22 @@ _OUTLET_CO2_DEVICE = {"Aeration": 1, "Exhaust": 2}
 _CLIMATE_LEVEL_RANGE = {
     "heater": (1, 10), "humidifier": (1, 4), "dehumidifier": (0, 1),
 }
+# Climate accessory setting subfields handled by the climate-config write path.
+_CLIMATE_SUBFIELDS = {
+    "mode", "gear", "wind", "level",
+    "schedule_start", "schedule_end",
+    "cycle_start", "cycle_run", "cycle_off", "cycle_times",
+    "apply_bundle",
+}
+# Climate Mode label -> modeType. Manual/Time Slot/Cycle are the universal GGS
+# enums (confirmed from device config blocks). Temperature (heater) and Humidity
+# (dehumidifier) are the device-specific env modes — best-guess (temp-only 3 /
+# humidity-only 4, mirroring the fan) pending a confirmed packet capture.
+_CLIMATE_MODE_TO_TYPE = {
+    "Manual": 0, "Time Slot": 1, "Cycle": 2, "Temperature": 3, "Humidity": 4,
+}
+_CLIMATE_MODE_FROM_TYPE = {0: "Manual", 1: "Time Slot", 2: "Cycle",
+                           3: "Temperature", 4: "Humidity"}
 
 # Light setting subfields handled by the light-config write path.
 _LIGHT_SUBFIELDS = {
@@ -93,6 +109,7 @@ _FAN_SUBFIELDS = {
     "cycle_run_minutes", "cycle_off_minutes",  # legacy aliases (minutes)
     "cycle_times",
     "oscillation_level", "natural_wind",
+    "close_co2",                               # blower only
     "apply_bundle",
 }
 # Simplified Fan Mode select (card) -> modeType. "Environment" defaults to
@@ -290,12 +307,11 @@ def translate_command(
     if field.startswith("soil_") and ("_cal_" in field or field.endswith("_substrate")):
         return _cmd_soil_cfg(mac, uid, field, value, senconfig)
 
-    if field in ("heater", "humidifier", "dehumidifier") and subfield == "apply_bundle":
-        return _cmd_climate_config(mac, uid, field, value, state)
-    if field in _CLIMATE_LEVEL_RANGE and subfield == "level":
-        return _cmd_climate_level(mac, uid, field, value, state)
     if field in ("heater", "humidifier", "dehumidifier"):
-        return _cmd_climate_onoff(mac, uid, field, value, state, last)
+        if subfield in _CLIMATE_SUBFIELDS:
+            return _cmd_climate_config(mac, uid, field, value, subfield, state)
+        if subfield is None:                     # plain on/off toggle
+            return _cmd_climate_onoff(mac, uid, field, value, state, last)
 
     logger.warning("Unknown command field: %s subfield: %s", field, subfield)
     return None
@@ -794,6 +810,8 @@ def _apply_fan_subfield(block, subfield, value, speed_max):
         block["shakeLevel"] = max(0, min(10, int(float(value))))
     elif subfield == "natural_wind":
         block["natural"] = _onoff(value)
+    elif subfield == "close_co2":         # blower: close CO2 device when running
+        block["closeCO2"] = _onoff(value)
 
 
 def _fan_tp0(block):
@@ -832,27 +850,69 @@ def _cmd_climate_level(mac, uid, field, value, state):
     }))
 
 
-def _cmd_climate_config(mac, uid, field, value, state):
-    """Atomic multi-field commit for a climate accessory (card Save button).
-    Applies staged settings (currently just ``level``) into one write while
-    preserving the accessory's on/off state."""
-    try:
-        payload = json.loads(value)
-    except (ValueError, TypeError):
-        return None
-    if not isinstance(payload, dict):
-        return None
+def _apply_climate_subfield(block, subfield, value, field):
+    """Apply one heater/dehumidifier/humidifier setting into ``block``.
+    Gear/Wind/Level all map to mLevel; schedule -> timePeriod; cycle ->
+    cycleTime; mode -> modeType. Raises on unparseable values."""
+    if subfield == "mode":
+        block["modeType"] = _CLIMATE_MODE_TO_TYPE.get(str(value), 0)
+    elif subfield in ("gear", "wind", "level"):
+        lv = _climate_level_value(field, value)
+        if lv is not None:
+            block["mLevel"] = lv
+    elif subfield == "schedule_start":
+        _fan_tp0(block)["startTime"] = _hhmm_to_seconds(value)
+    elif subfield == "schedule_end":
+        _fan_tp0(block)["endTime"] = _hhmm_to_seconds(value)
+    elif subfield == "cycle_start":
+        block.setdefault("cycleTime", {"weekmask": 127})["startTime"] = \
+            _hhmm_to_seconds(value)
+    elif subfield == "cycle_run":
+        block.setdefault("cycleTime", {"weekmask": 127})["openDur"] = \
+            _hms_to_seconds(value)
+    elif subfield == "cycle_off":
+        block.setdefault("cycleTime", {"weekmask": 127})["closeDur"] = \
+            _hms_to_seconds(value)
+    elif subfield == "cycle_times":
+        block.setdefault("cycleTime", {"weekmask": 127})["times"] = \
+            max(1, min(100, int(float(value))))
+
+
+def _cmd_climate_config(mac, uid, field, value, subfield, state):
+    """Climate accessory mode/schedule/cycle/level write. Read-modify-write of
+    the whole block so on/off, level, schedule and cycle are all preserved, and
+    only the touched field(s) change. ``apply_bundle`` commits several at once."""
     cur = state.get(field, {})
-    obj = {
+    cur_tp = cur.get("timePeriod")
+    tp0 = dict(cur_tp[0]) if isinstance(cur_tp, list) and cur_tp and \
+        isinstance(cur_tp[0], dict) else {"enabled": 1, "weekmask": 127,
+                                          "startTime": 0, "endTime": 0}
+    cur_ct = cur.get("cycleTime")
+    ct = dict(cur_ct) if isinstance(cur_ct, dict) and cur_ct else \
+        {"weekmask": 127, "startTime": 0, "openDur": 0, "closeDur": 0, "times": 1}
+    block = {
+        "modeType": int(cur.get("modeType", 0) or 0),
         "mOnOff": int(_field_of(cur, "on", "mOnOff")),
         "mLevel": int(_field_of(cur, "level", "mLevel") or 0),
-        "timePeriod": _TIME_PERIOD,
+        "timePeriod": [tp0],
+        "cycleTime": ct,
     }
-    if "level" in payload:
-        lv = _climate_level_value(field, payload["level"])
-        if lv is not None:
-            obj["mLevel"] = lv
-    return _config_field(mac, uid, "device", field, _strip_live(obj))
+    try:
+        if subfield == "apply_bundle":
+            payload = json.loads(value)
+            if not isinstance(payload, dict):
+                return None
+            for k, v in payload.items():
+                _apply_climate_subfield(block, str(k), v, field)
+        else:
+            _apply_climate_subfield(block, subfield, value, field)
+    except (ValueError, TypeError):
+        return None
+    tp = block.get("timePeriod")
+    if isinstance(tp, list) and tp and isinstance(tp[0], dict):
+        tp[0].setdefault("enabled", 1)
+        tp[0].setdefault("weekmask", 127)
+    return _config_field(mac, uid, "device", field, _strip_live(block))
 
 
 def _cmd_climate_onoff(mac, uid, field, value, state, last):

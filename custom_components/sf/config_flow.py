@@ -28,18 +28,61 @@ from .const import (
     CONF_INSTALL_CARD,
 )
 
-_SCHEMA = vol.Schema({
-    vol.Required(CONF_LISTEN_PORT, default=DEFAULT_LISTEN_PORT): vol.All(
-        int, vol.Range(min=1, max=65535)
-    ),
-    vol.Required(CONF_UPSTREAM_HOST, default=DEFAULT_UPSTREAM_HOST): str,
-    vol.Required(CONF_UPSTREAM_PORT, default=DEFAULT_UPSTREAM_PORT): vol.All(
-        int, vol.Range(min=1, max=65535)
-    ),
-    vol.Required(CONF_ALLOW_CONTROL, default=False): bool,
-    vol.Required(CONF_KEEP_OFFLINE, default=True): bool,
-    vol.Required(CONF_ENV_ENTITIES, default=True): bool,
-})
+# The upstream (Spider Farmer cloud) host/port are protocol constants — the
+# devices always dial sf.mqtt.spider-farmer.com:8883. They're shown read-only
+# so users can see them but can't break the relay by editing them. read_only
+# selectors need HA 2024.8+, so fall back to plain editable fields on older
+# cores (the value is still the correct constant).
+def _readonly_text():
+    try:
+        return selector.TextSelector(
+            selector.TextSelectorConfig(read_only=True)  # type: ignore[typeddict-unknown-key]
+        )
+    except (vol.Invalid, TypeError, ValueError):
+        return str
+
+
+def _readonly_port():
+    try:
+        return selector.NumberSelector(
+            selector.NumberSelectorConfig(  # type: ignore[typeddict-unknown-key]
+                min=1, max=65535, mode=selector.NumberSelectorMode.BOX, read_only=True
+            )
+        )
+    except (vol.Invalid, TypeError, ValueError):
+        return vol.All(int, vol.Range(min=1, max=65535))
+
+
+def _base_schema(current: dict) -> vol.Schema:
+    """Setup/settings fields shared by initial config and the options flow.
+    Built at call time (not import) so the read_only selectors are only
+    validated against the running HA, never at module import."""
+    return vol.Schema({
+        vol.Required(
+            CONF_LISTEN_PORT,
+            default=current.get(CONF_LISTEN_PORT, DEFAULT_LISTEN_PORT),
+        ): vol.All(int, vol.Range(min=1, max=65535)),
+        vol.Required(
+            CONF_UPSTREAM_HOST,
+            default=current.get(CONF_UPSTREAM_HOST, DEFAULT_UPSTREAM_HOST),
+        ): _readonly_text(),
+        vol.Required(
+            CONF_UPSTREAM_PORT,
+            default=current.get(CONF_UPSTREAM_PORT, DEFAULT_UPSTREAM_PORT),
+        ): _readonly_port(),
+        vol.Required(
+            CONF_ALLOW_CONTROL,
+            default=current.get(CONF_ALLOW_CONTROL, False),
+        ): bool,
+        vol.Required(
+            CONF_KEEP_OFFLINE,
+            default=current.get(CONF_KEEP_OFFLINE, True),
+        ): bool,
+        vol.Required(
+            CONF_ENV_ENTITIES,
+            default=current.get(CONF_ENV_ENTITIES, True),
+        ): bool,
+    })
 
 
 class SfBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -59,7 +102,7 @@ class SfBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="user",
-            data_schema=_SCHEMA,
+            data_schema=_base_schema({}),
             description_placeholders={"port": str(DEFAULT_LISTEN_PORT)},
         )
 
@@ -100,31 +143,8 @@ class SfBridgeOptionsFlow(config_entries.OptionsFlow):
                 data={**(self._entry.options or {}), **user_input},
             )
 
-        schema = vol.Schema({
-            vol.Required(
-                CONF_LISTEN_PORT,
-                default=current.get(CONF_LISTEN_PORT, DEFAULT_LISTEN_PORT),
-            ): vol.All(int, vol.Range(min=1, max=65535)),
-            vol.Required(
-                CONF_UPSTREAM_HOST,
-                default=current.get(CONF_UPSTREAM_HOST, DEFAULT_UPSTREAM_HOST),
-            ): str,
-            vol.Required(
-                CONF_UPSTREAM_PORT,
-                default=current.get(CONF_UPSTREAM_PORT, DEFAULT_UPSTREAM_PORT),
-            ): vol.All(int, vol.Range(min=1, max=65535)),
-            vol.Required(
-                CONF_ALLOW_CONTROL,
-                default=current.get(CONF_ALLOW_CONTROL, False),
-            ): bool,
-            vol.Required(
-                CONF_KEEP_OFFLINE,
-                default=current.get(CONF_KEEP_OFFLINE, True),
-            ): bool,
-            vol.Required(
-                CONF_ENV_ENTITIES,
-                default=current.get(CONF_ENV_ENTITIES, True),
-            ): bool,
+        # Ports + Spider Farmer cloud host/port (host/port are read-only).
+        schema = _base_schema(current).extend({
             vol.Required(
                 CONF_INSTALL_CARD,
                 default=current.get(CONF_INSTALL_CARD, False),
@@ -137,6 +157,12 @@ class SfBridgeOptionsFlow(config_entries.OptionsFlow):
                 CONF_DIAG_LOG,
                 default=current.get(CONF_DIAG_LOG, False),
             ): bool,
+            # Version-tagged per-restart log file — kept directly under the
+            # "Enable diagnostic log" toggle it belongs with.
+            vol.Required(
+                CONF_DIAG_PER_BOOT,
+                default=current.get(CONF_DIAG_PER_BOOT, True),
+            ): bool,
             vol.Required(
                 CONF_DIAG_PATH,
                 default=current.get(CONF_DIAG_PATH, DEFAULT_DIAG_PATH),
@@ -145,10 +171,6 @@ class SfBridgeOptionsFlow(config_entries.OptionsFlow):
                 CONF_DIAG_DAYS,
                 default=current.get(CONF_DIAG_DAYS, DEFAULT_DIAG_DAYS),
             ): vol.In(list(range(1, 31))),
-            vol.Required(
-                CONF_DIAG_PER_BOOT,
-                default=current.get(CONF_DIAG_PER_BOOT, True),
-            ): bool,
         })
 
         return self.async_show_form(step_id="settings", data_schema=schema)

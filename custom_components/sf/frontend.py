@@ -137,6 +137,19 @@ async def async_register_card(hass: HomeAssistant, version: str) -> None:
     await _add_lovelace_resources(hass, urls)
 
     # Fallback/also: frontend extra-module URLs (YAML mode + app shell).
+    # Purge any stale ?v= URLs for the same card first, so the browser loads
+    # exactly one copy of the current version (accumulated older versions were
+    # a likely cause of intermittent "config error" / needing several refreshes
+    # before a card loads).
+    bases = {f"{URL_BASE}/{f}" for f in files}
+    mgr = hass.data.get(_EXTRA_MODULE_KEY)
+    if mgr is not None:
+        for existing in list(getattr(mgr, "urls", ()) or ()):
+            if existing.split("?")[0] in bases and existing not in urls:
+                try:
+                    mgr.remove(existing)
+                except Exception as exc:  # pragma: no cover
+                    _LOGGER.debug("Stale card url purge skipped for %s: %s", existing, exc)
     try:
         from homeassistant.components import frontend
 

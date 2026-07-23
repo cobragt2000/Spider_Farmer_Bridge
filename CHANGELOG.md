@@ -3,6 +3,150 @@
 All notable changes to the Spider Farmer Bridge integration.
 Each section below is ready to paste into the matching GitHub release.
 
+## 3.19.36
+
+### Fixed
+- **Blower Close CO2 (and Fan Natural Wind) rendered as two flash buttons instead of a
+  toggle.** Their switch state stayed "unknown" until the device happened to report the
+  field, and HA draws an unknown toggle as on/off flash buttons. They now always publish a
+  definite ON/OFF (default OFF), so they show as a normal toggle.
+- **"Apply" entities are now auto-hidden on existing installs too.** A setup-time sweep hides
+  any leftover visible `*_apply` write-channel entities, so you don't have to hide them one
+  by one.
+
+### Note
+- Environment targets are confirmed to decode correctly (temp/humidity/CO2 day-night targets
+  all produce the right values). If the Env tab still looks empty, it's the card not having
+  loaded yet — see the 3.19.35 card-loading fix and check for a duplicate card resource.
+
+## 3.19.35
+
+### Fixed
+- **Card sometimes needed several refreshes to load ("config error").** Older `?v=` copies of
+  the card could pile up in the frontend's module list on repeated updates, so the browser
+  tried to load multiple versions. The integration now purges stale card URLs and loads only
+  the current version.
+- **Environment targets now also decode from the full config file**, not just the targeted
+  `["target"]` read — so the Env tab fills reliably from whichever config response arrives.
+
+### Changed
+- **Hidden the per-device "Apply" entities.** The card's Save write-channels (`Fan Apply`,
+  `Heater Apply`, …) are now hidden from the dashboard by default — they're internal and
+  never touched directly (still functional). Existing installs: hide the current ones from
+  the device page, or they clear on a remove/re-add.
+
+## 3.19.34
+
+### Changed
+- **Calibration and Alerts tabs now use dropdowns.** Air/soil calibration offsets and the
+  alarm Min/Max thresholds are dropdowns (built from each field's range and step) instead of
+  boxes and sliders. (Bundled card v0.16.16.)
+
+### Fixed
+- **Config settings (Environment / Calibration / Alerts) sometimes showed defaults until a
+  save.** Some controllers don't answer the first config read on connect, so those tabs sat
+  on placeholder values until the ~10-minute poll. The initial poll now retries the config
+  read with backoff until the target/calibration/alarm thresholds actually arrive, so the
+  CB's current saved settings appear promptly.
+
+## 3.19.33
+
+### Changed
+- **Execution Times is a whole-number dropdown on every Cycle tile.** Fan, blower, heater,
+  humidifier and dehumidifier now pick Execution Times from a 1–100 dropdown (integers only,
+  no decimals) instead of a number box. (Bundled card v0.16.15.)
+
+## 3.19.32
+
+### Changed
+- **Environment tab now uses dropdowns.** The temperature/humidity/CO2 Day, Night and Dead
+  Zone targets are dropdowns instead of number boxes and sliders — options come from each
+  field's own range (Temp 32–122 °F, Humidity 0–100 %, CO2 300–2500 ppm step 10, plus the
+  dead-zone ranges). Still live (applied on change). (Bundled card v0.16.14.)
+
+## 3.19.31
+
+### Fixed
+- **Gear / Wind Speed missing from the heater, humidifier and dehumidifier tiles.** The card
+  referenced the wrong entity id (`..._level_set`); the actual settable entity id derives
+  from the friendly name — `number.sf_<p>_heater_level`, `number.sf_<p>_humidifier_level`,
+  `select.sf_<p>_dehumidifier_level`. The Gear (L1–L10 / L1–L4) and Wind Speed (Low/High)
+  dropdowns now appear in every mode. (Bundled card v0.16.13.)
+
+## 3.19.30
+
+### Fixed
+- **Humidifier (and dehumidifier) couldn't be turned off.** Their switch state was derived
+  from an `on` field the device never sends — the humidifier/dehumidifier blocks report
+  `mOnOff` (setpoint) and a live `level`, not `on`. The switch therefore read OFF even while
+  running, so every tap sent ON and it never turned off. On/off state now comes from
+  `mOnOff` (config frames) or the live running level (heater/humidifier, where level 0 is
+  unambiguously off), so the toggle reflects reality and turns the device off.
+
+### Added
+- **Mode-aware Humidifier tile.** Manual (Switch + Gear **L1–L4**), Time Slot, Cycle
+  (Start / Run Time / Closing Time / Execution Times / Gear), and Humidity — matching the
+  heater/dehumidifier tiles, staged behind Save. New entities: `humidifier_mode_set`,
+  `humidifier_schedule_start/stop`, `humidifier_cycle_start/run/off/times`.
+  (Bundled card v0.16.12.) *As with the others, the Humidity mode value is a documented
+  best-guess pending a confirmed capture; Manual/Time Slot/Cycle are confirmed.*
+
+## 3.19.29
+
+### Docs
+- **README status badges.** Added header badges that read live from the repo — integration
+  version (`manifest.json`), dashboard-card version (`package.json`), Hotspot add-on version
+  (`config.yaml`), and total GitHub downloads.
+
+## 3.19.28
+
+### Fixed
+- **Phantom environment sensors on sensor-less AC5/AC10 (run direct, no CB/DP).**
+  Those controllers emit a full air-sensor block of all zeros
+  (`temp:0, humi:0, co2:0, vpd:0, ppfd:0`) even with no probe attached, which was
+  read as evidence and created empty Temperature/Humidity/CO2/VPD/PPFD entities
+  (all showing 0 / 32 °F). Air-sensor entities are now created only when a real
+  ambient reading is present (non-zero temperature or humidity), so a real CB with
+  a probe is unaffected while a bare strip gets none.
+
+  *Already have the phantom entities?* After updating, HA marks them "no longer
+  provided by the integration" — delete them from the device page (or remove and
+  re-add the device) to clear them.
+
+## 3.19.27
+
+### Added
+- **Mode-aware Heater and Dehumidifier tiles.** Both now have expanded, per-mode tiles:
+  - *Heater* — Manual (Switch + Gear L1–L10), Time Slot, Cycle (Start / Run Time / Closing
+    Time HH:MM:SS / Execution Times / Gear), and Temperature.
+  - *Dehumidifier* — Manual (Switch + Wind Speed Low/High), Time Slot, Cycle, and Humidity.
+
+  Schedule/cycle changes commit atomically behind **Save**, same as the fan/blower/light
+  tiles. Backed by a new climate schedule/cycle write path and decode, plus new entities
+  (`heater_mode_set`, `heater_schedule_start/stop`, `heater_cycle_start/run/off/times`, and
+  the dehumidifier equivalents). (Bundled card v0.16.11.)
+
+  *Note:* Manual / Time Slot / Cycle use the confirmed universal mode values. The
+  **Temperature** (heater) and **Humidity** (dehumidifier) modes use a best-guess mode value
+  (temp-only / humidity-only) — still pending a confirmed packet capture of those two modes
+  being saved in the app; everything else is confirmed. Humidifier tile is still to come
+  (not yet recorded).
+
+## 3.19.26
+
+### Added
+- **Mode-aware Blower tile.** The blower now has the same expanded tile as the fan:
+  Manual (speed dial), Time Slot, Cycle, and Environment. Running Speed is a 25–100 %
+  dropdown, Standby Speed tracks it (Off, then 25…running−1), Cycle uses HH:MM / HH:MM:SS
+  pickers, Environment has a Run Mode selector, and every mode has the **Close CO2 Device**
+  toggle. Staged behind Save like the other tiles. New blower entities:
+  `blower_mode_set`, `blower_run_mode`, `blower_schedule_start/stop`,
+  `blower_running_speed`, `blower_standby_speed`, `blower_cycle_start/run/off/times`,
+  `blower_close_co2`. (Bundled card v0.16.10.)
+
+  *Heater and Dehumidifier tiles are next — their schedule/cycle write format still needs a
+  confirmed packet capture before their editable scheduling can be trusted.*
+
 ## 3.19.25
 
 ### Changed

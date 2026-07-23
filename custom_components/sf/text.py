@@ -94,6 +94,9 @@ class SfApplyText(SfEntity, TextEntity):
     _attr_native_min = 0
     _attr_native_max = 255
     _attr_mode = "text"
+    # Internal write channel — hidden from the dashboard by default (still
+    # enabled, so the card's Save service call works). Users never touch it.
+    _attr_entity_registry_visible_default = False
 
     def __init__(self, bus: SfBus, d: SfDef) -> None:
         super().__init__(bus, d)

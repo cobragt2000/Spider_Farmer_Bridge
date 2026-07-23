@@ -54,6 +54,19 @@ _ACCESSORY_MARKERS = frozenset(
     ("fan", "blower", "sensor", "heater", "humidifier", "dehumidifier")
 )
 
+
+def _air_sensor_live(sensor_block: dict) -> bool:
+    """True only when a real ambient probe is present. Sensor-less controllers
+    (AC5/AC10 run direct) still emit the air-sensor block, but every field reads
+    zero; a real probe always reports a non-zero temperature or humidity."""
+    for k in ("temp", "humi"):
+        try:
+            if float(sensor_block.get(k, 0) or 0) != 0.0:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
 # Ambiguous evidence (outlets/lights only) is not trusted until this many
 # getDevSta frames have been merged, or this much time has passed since the
 # first frame — GGS controllers report every few seconds, so a partial
@@ -128,6 +141,20 @@ def _alarm_from(d):
     cf = d.get("configFile")
     if isinstance(cf, dict) and isinstance(cf.get("alarm"), dict):
         return cf["alarm"]
+    return None
+
+
+def _target_from(d):
+    """Environment 'target' block: getConfigField ["target"] -> data.target;
+    getConfigFile -> data.configFile.target."""
+    if not isinstance(d, dict):
+        return None
+    t = d.get("target")
+    if isinstance(t, dict):
+        return t
+    cf = d.get("configFile")
+    if isinstance(cf, dict) and isinstance(cf.get("target"), dict):
+        return cf["target"]
     return None
 
 
@@ -930,8 +957,16 @@ def _process_publish(
         # Field-level tokens for air sensors (v3.2.3): co2 etc. exist only
         # when that probe is physically attached, so each field is its own
         # evidence token. Plain "sensor" stays for type detection.
+        #
+        # v3.19.28: some controllers (AC5/AC10 run direct, without a CB/DP)
+        # emit a FULL air-sensor block of all zeros even with no probe attached
+        # — {"temp":0,"humi":0,"co2":0,"vpd":0,"ppfd":0,...}. Presence of the
+        # keys then created phantom Temperature/Humidity/CO2/VPD/PPFD entities.
+        # A real ambient probe always reports a non-zero temperature or
+        # humidity, so gate the whole air-sensor block on that before trusting
+        # any of its fields as evidence.
         sensor_block = d.get("sensor")
-        if isinstance(sensor_block, dict):
+        if isinstance(sensor_block, dict) and _air_sensor_live(sensor_block):
             present |= {
                 f"sensor:{k}"
                 for k in ("temp", "humi", "co2", "vpd", "ppfd")
@@ -1092,6 +1127,29 @@ def _process_publish(
                         })
                     except Exception:
                         pass
+                # Some controllers don't answer the first getConfigFile read, so
+                # the Environment/Calibration/Alerts tabs showed defaults until
+                # the ~10-min poll. Retry with backoff until the config caches
+                # (env target / calibration / alarm thresholds) actually arrive.
+                if session.device_type == "cb":
+                    for delay in (8, 20, 45):
+                        if session.env_cfg or session.cal_cfg or session.alarm_cfg:
+                            break
+                        await asyncio.sleep(delay)
+                        if session.env_cfg or session.cal_cfg or session.alarm_cfg:
+                            break
+                        try:
+                            await session.inject({
+                                "method": "getConfigField", "pid": session.mac_raw,
+                                "params": {"keyPath": ["target"]},
+                                "msgId": str(int(time.time() * 1000)), "uid": session.uid,
+                            })
+                            await session.inject({
+                                "method": "getConfigFile", "pid": session.mac_raw,
+                                "msgId": str(int(time.time() * 1000)), "uid": session.uid,
+                            })
+                        except Exception:
+                            pass
 
             session.initial_poll_task = asyncio.create_task(_initial_poll())
 
@@ -1181,6 +1239,14 @@ def _process_publish(
             _aal = getattr(mqtt_client, "apply_alarm_settings", None)
             if _aal is not None:
                 _aal(session.mac_raw, _alarm)
+        # Environment target block also arrives inside getConfigFile (not just
+        # a targeted getConfigField ["target"]), so decode it here too.
+        _tgt = _target_from(d)
+        if _tgt:
+            session.env_cfg = dict(_tgt)
+            from .normalizer import normalize_target
+            for topic, val in normalize_target(session.mac_raw, _tgt).items():
+                mqtt_client.publish(topic, val, retain=True, qos=0)
 
     # ── Outlet config cache (v3.11.1a3): the whole ps5/ps10/outlet block
     # comes back from getConfigField ["device", <block>] as
@@ -1254,7 +1320,7 @@ def _process_publish(
     else:
         normalized = normalize_status(
             session.mac, data, mac=session.mac_raw, fan_cache=session.fan_state,
-            light_cache=session.light_state,
+            light_cache=session.light_state, climate_cache=session.device_state,
         )
         for topic, value in normalized.items():
             mqtt_client.publish(topic, value, retain=True, qos=0)

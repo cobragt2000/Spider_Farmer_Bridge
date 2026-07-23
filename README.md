@@ -5,6 +5,11 @@
 [![Discord](https://img.shields.io/badge/Discord-Join%20our%20chat-5865F2.svg?logo=discord&logoColor=white)](https://discord.gg/YZCcdwXTCp)
 [![Integration usage](https://img.shields.io/badge/dynamic/json?color=41BDF5&logo=home-assistant&label=integration%20usage&suffix=%20installs&cacheSeconds=15600&url=https://analytics.home-assistant.io/custom_integrations.json&query=$.sf.total)](https://analytics.home-assistant.io/)
 
+[![Integration version](https://img.shields.io/badge/dynamic/json?color=2ea44f&label=integration&query=%24.version&url=https%3A%2F%2Fraw.githubusercontent.com%2Fcobragt2000%2Fspider_farmer_bridge%2Fmain%2Fcustom_components%2Fsf%2Fmanifest.json)](https://github.com/cobragt2000/spider_farmer_bridge/releases)
+[![Dashboard card version](https://img.shields.io/badge/dynamic/json?color=1f6feb&label=dashboard%20card&query=%24.version&url=https%3A%2F%2Fraw.githubusercontent.com%2Fcobragt2000%2Fspider_farmer_bridge%2Fmain%2Fspider-farmer-card%2Fpackage.json)](https://github.com/cobragt2000/spider_farmer_bridge)
+[![Hotspot add-on version](https://img.shields.io/badge/dynamic/yaml?color=8250df&label=hotspot%20add--on&query=%24.version&url=https%3A%2F%2Fraw.githubusercontent.com%2Fcobragt2000%2Fspider_farmer_bridge%2Fmain%2Fspider_farmer_hotspot%2Fconfig.yaml)](https://github.com/cobragt2000/spider_farmer_bridge)
+[![Downloads](https://img.shields.io/github/downloads/cobragt2000/spider_farmer_bridge/total?color=orange&label=downloads)](https://github.com/cobragt2000/spider_farmer_bridge/releases)
+
 Local control and monitoring for **Spider Farmer GGS (Genius Grow System)**
 devices — Display Paneles, AC5/AC10 power strips, light controllers, grow
 lights, climate gear, and 3-in-1 soil probes — as **native Home Assistant

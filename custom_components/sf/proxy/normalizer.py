@@ -235,6 +235,34 @@ _FAN_RUN_MODE_MAP = {
 }
 # Climate accessory operating mode.
 _CLIMATE_MODE_MAP = {None: "Manual", 1: "Time/Cycle", 4: "Environment"}
+# Mode-aware select value per modeType. Manual/Time Slot/Cycle are the confirmed
+# universal enums; heater uses "Temperature" (3), dehumidifier "Humidity" (4).
+_CLIMATE_MODE_SET_MAP = {0: "Manual", 1: "Time Slot", 2: "Cycle",
+                         3: "Temperature", 4: "Humidity"}
+
+
+def _decode_climate_config(out, e, field, mod, cache):
+    """Emit the mode-aware config topics (mode_set, schedule, cycle) for a
+    heater/dehumidifier. Config-only fields fall back to the cached block so
+    they don't sit on 'unknown' between config frames."""
+    def val(key):
+        v = mod.get(key)
+        return v if v is not None else (cache or {}).get(key)
+
+    mt = val("modeType")
+    if mt is not None:
+        out[f"ggs/ha/{e}/{field}_mode_set/state"] = \
+            _CLIMATE_MODE_SET_MAP.get(int(mt), "Manual")
+    tp = val("timePeriod")
+    if isinstance(tp, list) and tp:
+        out[f"ggs/ha/{e}/{field}_schedule_start/state"] = _sec_to_hhmm(tp[0].get("startTime", 0))
+        out[f"ggs/ha/{e}/{field}_schedule_stop/state"] = _sec_to_hhmm(tp[0].get("endTime", 0))
+    ct = val("cycleTime")
+    if isinstance(ct, dict) and ct:
+        out[f"ggs/ha/{e}/{field}_cycle_start/state"] = _sec_to_hhmm(ct.get("startTime", 0))
+        out[f"ggs/ha/{e}/{field}_cycle_run/state"] = _sec_to_hhmmss(ct.get("openDur", 0))
+        out[f"ggs/ha/{e}/{field}_cycle_off/state"] = _sec_to_hhmmss(ct.get("closeDur", 0))
+        out[f"ggs/ha/{e}/{field}_cycle_times/state"] = str(int(ct.get("times", 1) or 1))
 # Standalone SE light mode field.
 _SE_MODE_LABELS = {0: "Manual", 1: "Automatic", 2: "Automatic (Standby)"}
 # Outlet mode config decodes.
@@ -253,6 +281,7 @@ def normalize_status(
     mac: str = "",
     fan_cache: Optional[Dict[str, dict]] = None,
     light_cache: Optional[Dict[str, dict]] = None,
+    climate_cache: Optional[Dict[str, dict]] = None,
     **kwargs,   # tolerate extra keyword args from callers
 ) -> Dict[str, str]:
     """Decode one live status frame into topic -> value pairs."""
@@ -283,13 +312,19 @@ def normalize_status(
     for module, num in (("light", 1), ("light2", 2)):
         _decode_light(out, e, num, d.get(module, {}),
                       (light_cache or {}).get(module, {}))
-    _decode_blower(out, e, d.get("blower", {}))
+    _decode_blower(out, e, d.get("blower", {}), (fan_cache or {}).get("blower", {}))
     _decode_fan(out, e, d.get("fan", {}), (fan_cache or {}).get("fan", {}))
     _decode_outlets(out, e, d.get("outlet", {}))
     _decode_soil(out, e, d.get("sensors", []))
     _decode_humidifier(out, e, d.get("humidifier", {}))
     _decode_dehumidifier(out, e, d.get("dehumidifier", {}))
     _decode_heater(out, e, d.get("heater", {}))
+    cc = climate_cache or {}
+    _decode_climate_config(out, e, "heater", d.get("heater", {}), cc.get("heater", {}))
+    _decode_climate_config(out, e, "dehumidifier", d.get("dehumidifier", {}),
+                           cc.get("dehumidifier", {}))
+    _decode_climate_config(out, e, "humidifier", d.get("humidifier", {}),
+                           cc.get("humidifier", {}))
     return out
 
 
@@ -363,9 +398,10 @@ def _decode_light(out, e, num, block, cache=None):
         out[f"ggs/ha/{e}/light_{num}_ppfd_max/state"] = str(int(pmax or 0))
 
 
-def _decode_blower(out, e, block):
+def _decode_blower(out, e, block, cache=None):
     if not block:
         return
+    cache = cache or {}
     is_on = _on(_num(block, "mOnOff", "on"))
     level = _num(block, "mLevel", "level")
     pct = level if is_on else 0
@@ -376,6 +412,37 @@ def _decode_blower(out, e, block):
     out[f"ggs/ha/{e}/blower_mode/state"] = _FAN_MODE_MAP.get(
         block.get("modeType"), "Manual"
     )
+
+    # ── Mode-aware config fields (arrive in config responses; fall back to the
+    # cached blower block so they don't sit on "unknown" between frames) ──
+    def val(key):
+        return block.get(key, cache.get(key))
+
+    mt = val("modeType")
+    if mt is not None:
+        out[f"ggs/ha/{e}/blower_mode_set/state"] = _FAN_SIMPLE_MODE_MAP.get(int(mt), "Manual")
+        if int(mt) in _FAN_RUN_MODE_MAP:
+            out[f"ggs/ha/{e}/blower_run_mode/state"] = _FAN_RUN_MODE_MAP[int(mt)]
+    ms = val("maxSpeed")
+    if ms is not None:
+        out[f"ggs/ha/{e}/blower_running_speed/state"] = str(int(ms or 0))
+    mn = val("minSpeed")
+    if mn is not None:
+        out[f"ggs/ha/{e}/blower_standby_speed/state"] = str(int(mn or 0))
+    # Always publish a definite ON/OFF so the switch renders as a toggle. An
+    # absent closeCO2 (not reported yet) would leave the state "unknown", which
+    # HA draws as two flash buttons instead of a toggle. Default OFF.
+    out[f"ggs/ha/{e}/blower_close_co2/state"] = "ON" if _on(val("closeCO2")) else "OFF"
+    tp = val("timePeriod")
+    if isinstance(tp, list) and tp:
+        out[f"ggs/ha/{e}/blower_schedule_start/state"] = _sec_to_hhmm(tp[0].get("startTime", 0))
+        out[f"ggs/ha/{e}/blower_schedule_stop/state"] = _sec_to_hhmm(tp[0].get("endTime", 0))
+    ct = val("cycleTime")
+    if isinstance(ct, dict) and ct:
+        out[f"ggs/ha/{e}/blower_cycle_start/state"] = _sec_to_hhmm(ct.get("startTime", 0))
+        out[f"ggs/ha/{e}/blower_cycle_run/state"] = _sec_to_hhmmss(ct.get("openDur", 0))
+        out[f"ggs/ha/{e}/blower_cycle_off/state"] = _sec_to_hhmmss(ct.get("closeDur", 0))
+        out[f"ggs/ha/{e}/blower_cycle_times/state"] = str(int(ct.get("times", 1) or 1))
 
 
 def _decode_fan(out, e, block, cache):
@@ -402,8 +469,9 @@ def _decode_fan(out, e, block, cache):
     )
     if shake_raw is not None:
         out[f"ggs/ha/{e}/fan_oscillation/state"] = str(shake)
-    if natural_raw is not None:
-        out[f"ggs/ha/{e}/fan_natural_wind/state"] = "ON" if _on(natural) else "OFF"
+    # Always publish a definite ON/OFF so the Natural Wind switch is a toggle
+    # (unknown would render as flash buttons). Default OFF.
+    out[f"ggs/ha/{e}/fan_natural_wind/state"] = "ON" if _on(natural) else "OFF"
 
     # ── Mode-aware config fields (arrive in config responses; fall back to the
     # cached fan block so they don't sit on "unknown" between config frames) ──
@@ -463,13 +531,32 @@ def _decode_soil(out, e, sensors):
             out[f"ggs/ha/{e}/soil_{tag}_ec/state"] = str(s["ECSoil"])
 
 
+def _climate_on(mod, level_off_at_zero):
+    """On/off for a climate accessory. Config frames carry the ``mOnOff``
+    setpoint; live getDevSta frames carry only the running ``level``. The
+    humidifier/dehumidifier blocks never carry an ``on`` field (unlike
+    fan/light), so keying off it left the switch stuck OFF while running — every
+    tap then sent ON and it "couldn't be turned off". Prefer mOnOff/on; fall
+    back to a live running level only where 0 unambiguously means off
+    (heater/humidifier). Returns None when undeterminable so the caller leaves
+    the last known state untouched (dehumidifier Low == mLevel 0)."""
+    if "mOnOff" in mod:
+        return _on(mod.get("mOnOff"))
+    if "on" in mod:
+        return _on(mod.get("on"))
+    if level_off_at_zero and "level" in mod:
+        return int(mod.get("level") or 0) > 0
+    return None
+
+
 def _decode_humidifier(out, e, mod):
     if not mod:
         return
-    active = _on(mod["on"]) if "on" in mod else False
+    active = _climate_on(mod, level_off_at_zero=True)
     level = int(_num(mod, "mLevel", "level") or 0)
-    out[f"ggs/ha/{e}/humidifier_active/state"] = "ON" if active else "OFF"
-    out[f"ggs/ha/{e}/humidifier_level/state"] = str(level) if active else "0"
+    if active is not None:
+        out[f"ggs/ha/{e}/humidifier_active/state"] = "ON" if active else "OFF"
+        out[f"ggs/ha/{e}/humidifier_level/state"] = str(level) if active else "0"
     out[f"ggs/ha/{e}/humidifier_mode/state"] = _CLIMATE_MODE_MAP.get(
         mod.get("modeType"), "Manual"
     )
@@ -480,12 +567,15 @@ def _decode_humidifier(out, e, mod):
 def _decode_dehumidifier(out, e, mod):
     if not mod:
         return
-    active = _on(mod["on"]) if "on" in mod else False
+    # Dehumidifier level 0 == Low (a valid running level), so a live level of 0
+    # is ambiguous with off — only trust mOnOff/on for the running state.
+    active = _climate_on(mod, level_off_at_zero=False)
     level = int(_num(mod, "mLevel", "level") or 0)
-    out[f"ggs/ha/{e}/dehumidifier_active/state"] = "ON" if active else "OFF"
-    out[f"ggs/ha/{e}/dehumidifier_level/state"] = (
-        {0: "Low", 1: "High"}.get(level, "Off") if active else "Off"
-    )
+    if active is not None:
+        out[f"ggs/ha/{e}/dehumidifier_active/state"] = "ON" if active else "OFF"
+        out[f"ggs/ha/{e}/dehumidifier_level/state"] = (
+            {0: "Low", 1: "High"}.get(level, "Off") if active else "Off"
+        )
     out[f"ggs/ha/{e}/dehumidifier_mode/state"] = _CLIMATE_MODE_MAP.get(
         mod.get("modeType"), "Manual"
     )
@@ -496,8 +586,9 @@ def _decode_dehumidifier(out, e, mod):
 def _decode_heater(out, e, mod):
     if not mod:
         return
+    on = _climate_on(mod, level_off_at_zero=True)
     level = int(_num(mod, "mLevel", "level") or 0)
-    active = level > 0
+    active = (level > 0) if on is None else on
     out[f"ggs/ha/{e}/heater_active/state"] = "ON" if active else "OFF"
     out[f"ggs/ha/{e}/heater_level/state"] = str(level)
     out[f"ggs/ha/{e}/heater_mode/state"] = _CLIMATE_MODE_MAP.get(

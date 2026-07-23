@@ -192,8 +192,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # ── Optional bundled Lovelace card (opt-in in Settings) ───────────────
     await _apply_card_option(hass, cfg)
 
+    # Hide the card's internal "Apply" write-channel entities that older
+    # versions registered as visible (new ones are hidden by default). Users
+    # never interact with them directly.
+    _hide_apply_entities(hass)
+
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
+
+
+def _hide_apply_entities(hass: HomeAssistant) -> None:
+    """Hide any ggs_*_apply write-channel entities still marked visible."""
+    try:
+        from homeassistant.helpers import entity_registry as er
+        reg = er.async_get(hass)
+        for ent in list(reg.entities.values()):
+            uid = ent.unique_id or ""
+            if (ent.platform == DOMAIN and uid.startswith("ggs_")
+                    and uid.endswith("_apply") and ent.hidden_by is None):
+                reg.async_update_entity(
+                    ent.entity_id, hidden_by=er.RegistryEntryHider.INTEGRATION
+                )
+    except Exception as exc:  # pragma: no cover - best effort
+        _LOGGER.debug("Hide apply entities skipped: %s", exc)
 
 
 async def _apply_card_option(hass: HomeAssistant, cfg: dict) -> None:
