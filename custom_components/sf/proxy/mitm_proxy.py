@@ -1216,7 +1216,12 @@ def _process_publish(
         session._outlet_discovery_pruned = True
 
     # ── Soil-probe app names (senConfig[].label) — read-only ──────────────
-    if method in ("getConfigField", "getConfigFile"):
+    # Gate on a known device type: these paths assign the device's logical slot
+    # (via _type_for_mac), and a config/senConfig frame that arrives before
+    # detection finishes would assign it from an unknown-type guess. Both PS
+    # strips and CBs can carry soil probes, so there's no safe type guess —
+    # wait until detection has set device_type (device_display is populated).
+    if method in ("getConfigField", "getConfigFile") and session.device_type:
         _sen = _senconfig_from(d)
         if _sen:
             # Cache the full array so per-probe calibration/substrate writes

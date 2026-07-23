@@ -531,32 +531,30 @@ def _decode_soil(out, e, sensors):
             out[f"ggs/ha/{e}/soil_{tag}_ec/state"] = str(s["ECSoil"])
 
 
-def _climate_on(mod, level_off_at_zero):
-    """On/off for a climate accessory. Config frames carry the ``mOnOff``
-    setpoint; live getDevSta frames carry only the running ``level``. The
-    humidifier/dehumidifier blocks never carry an ``on`` field (unlike
-    fan/light), so keying off it left the switch stuck OFF while running — every
-    tap then sent ON and it "couldn't be turned off". Prefer mOnOff/on; fall
-    back to a live running level only where 0 unambiguously means off
-    (heater/humidifier). Returns None when undeterminable so the caller leaves
-    the last known state untouched (dehumidifier Low == mLevel 0)."""
+def _climate_on(mod):
+    """Definite on/off for a climate accessory (heater/humidifier/dehumidifier).
+    These blocks never carry an ``on`` field (unlike fan/light): config frames
+    carry the ``mOnOff`` setpoint, live getDevSta frames carry the running
+    ``level`` (>0 = on). A bare ``mLevel`` is the remembered setpoint, not the
+    on/off state, so it defaults to off. Always returns a bool — never "unknown"
+    (which left the switch stuck and HA drew it as flash buttons instead of a
+    toggle)."""
     if "mOnOff" in mod:
         return _on(mod.get("mOnOff"))
     if "on" in mod:
         return _on(mod.get("on"))
-    if level_off_at_zero and "level" in mod:
+    if "level" in mod:
         return int(mod.get("level") or 0) > 0
-    return None
+    return False
 
 
 def _decode_humidifier(out, e, mod):
     if not mod:
         return
-    active = _climate_on(mod, level_off_at_zero=True)
+    active = _climate_on(mod)
     level = int(_num(mod, "mLevel", "level") or 0)
-    if active is not None:
-        out[f"ggs/ha/{e}/humidifier_active/state"] = "ON" if active else "OFF"
-        out[f"ggs/ha/{e}/humidifier_level/state"] = str(level) if active else "0"
+    out[f"ggs/ha/{e}/humidifier_active/state"] = "ON" if active else "OFF"
+    out[f"ggs/ha/{e}/humidifier_level/state"] = str(level) if active else "0"
     out[f"ggs/ha/{e}/humidifier_mode/state"] = _CLIMATE_MODE_MAP.get(
         mod.get("modeType"), "Manual"
     )
@@ -567,15 +565,12 @@ def _decode_humidifier(out, e, mod):
 def _decode_dehumidifier(out, e, mod):
     if not mod:
         return
-    # Dehumidifier level 0 == Low (a valid running level), so a live level of 0
-    # is ambiguous with off — only trust mOnOff/on for the running state.
-    active = _climate_on(mod, level_off_at_zero=False)
+    active = _climate_on(mod)
     level = int(_num(mod, "mLevel", "level") or 0)
-    if active is not None:
-        out[f"ggs/ha/{e}/dehumidifier_active/state"] = "ON" if active else "OFF"
-        out[f"ggs/ha/{e}/dehumidifier_level/state"] = (
-            {0: "Low", 1: "High"}.get(level, "Off") if active else "Off"
-        )
+    out[f"ggs/ha/{e}/dehumidifier_active/state"] = "ON" if active else "OFF"
+    out[f"ggs/ha/{e}/dehumidifier_level/state"] = (
+        {0: "Low", 1: "High"}.get(level, "Off") if active else "Off"
+    )
     out[f"ggs/ha/{e}/dehumidifier_mode/state"] = _CLIMATE_MODE_MAP.get(
         mod.get("modeType"), "Manual"
     )
@@ -586,9 +581,8 @@ def _decode_dehumidifier(out, e, mod):
 def _decode_heater(out, e, mod):
     if not mod:
         return
-    on = _climate_on(mod, level_off_at_zero=True)
+    active = _climate_on(mod)
     level = int(_num(mod, "mLevel", "level") or 0)
-    active = (level > 0) if on is None else on
     out[f"ggs/ha/{e}/heater_active/state"] = "ON" if active else "OFF"
     out[f"ggs/ha/{e}/heater_level/state"] = str(level)
     out[f"ggs/ha/{e}/heater_mode/state"] = _CLIMATE_MODE_MAP.get(

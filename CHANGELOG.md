@@ -3,6 +3,29 @@
 All notable changes to the Spider Farmer Bridge integration.
 Each section below is ready to paste into the matching GitHub release.
 
+## 3.19.39
+
+### Fixed
+- **README "dashboard card" badge showed "resource not found."** It pointed at a
+  `spider-farmer-card/package.json` that isn't committed to this repo. The card version now
+  ships as `custom_components/sf/cards/card-version.json` (bundled with the card), and the
+  badge reads from there.
+
+## 3.19.38
+
+### Fixed
+- **Devices mis-assigned an `ac10` slot on a fresh install/reload.** A config/senConfig frame
+  that arrived before type detection finished assigned the device's logical slot from an
+  unknown-type guess (which defaulted to a power strip → `ac10…`), so Display Panels landed
+  on `ac10` instead of `dp1`. Slot assignment from those config paths now waits until the
+  device type is actually detected. (Both power strips and CBs can carry soil probes, so
+  there's no safe pre-detection guess — hence the wait.)
+  *(To fix an install that already got wrong slots: edit them in the Device slot mappings
+  dialog, or fully remove and re-add the integration on this version.)*
+- **Dehumidifier/heater/humidifier switch could read "unknown"** (and render as flash
+  buttons, and fail CI). Their on/off now always resolves to a definite ON/OFF: mOnOff/on
+  when reported, else the live running level, else off.
+
 ## 3.19.36
 
 ### Fixed

@@ -1021,11 +1021,16 @@ class SfBus:
     def _type_for_mac(self, mac_raw: str) -> str:
         mac = _mac(mac_raw)
         name, model = self.device_display.get(mac, ("", ""))
-        from .entity_defs import _TYPE_LABELS
+        from .entity_defs import _TYPE_LABELS, _PRIMARY_TYPE
         for t, label in _TYPE_LABELS.items():
             if label == model:
                 return t
-        return "ps10"
+        # Unknown type (device_display not populated yet) — last-resort default.
+        # Callers that assign a slot are now gated on a detected type (both PS
+        # strips and CBs can carry soil probes, so there's no safe guess here),
+        # so this rarely triggers; default to the primary type (display panel)
+        # rather than a specific power strip, which mis-slotted panels as ac10.
+        return _PRIMARY_TYPE
 
     def _sync_outlet_mode(self, mac_raw: str, n: int, mode: str,
                           device_cfg: dict) -> None:
